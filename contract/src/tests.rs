@@ -815,3 +815,18 @@ fn relayer_cannot_seed_usdc_claims() {
     call_as(relayer(), 0);
     c.create_claim("p".into(), "t".into(), "a long enough rule".into(), vec![], 5_000, U128(ONE));
 }
+
+#[test]
+fn cards_show_odds_and_last_verdict() {
+    let mut c = setup(0);
+    let (id, audit, _, _) = audited_claim(&mut c);
+    c.apply_round(audit, votes(1, &[Verdict::Balablu, Verdict::Balablu, Verdict::Balablu]));
+    ctx(kemi(), 0, 1_000 * MIN + 11 * MIN);
+    c.finalize(audit);
+    let cards = c.get_cards(None, None);
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0].claim.id, id);
+    assert_eq!(cards[0].last_outcome, Some(Outcome::Balablu));
+    assert_eq!(cards[0].last_audit, Some(audit));
+    assert!((cards[0].odds_bps as i64 - 1_000).abs() <= 1);
+}

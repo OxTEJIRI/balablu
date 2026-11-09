@@ -273,6 +273,22 @@ pub struct JuryPrompt {
 
 #[near(serializers = [json])]
 #[derive(Debug, Clone)]
+pub struct ClaimCard {
+    pub claim: Claim,
+    /// Odds shown to people: USDC market if it has bets, else practice.
+    pub odds_bps: u32,
+    pub points_odds_bps: u32,
+    pub usdc_odds_bps: Option<u32>,
+    pub status: MarketStatus,
+    pub volume_points: U128,
+    pub volume_usdc: U128,
+    pub last_outcome: Option<Outcome>,
+    pub last_audit: Option<u64>,
+    pub evidence_count: u32,
+}
+
+#[near(serializers = [json])]
+#[derive(Debug, Clone)]
 pub struct MarketView {
     pub claim_id: u64,
     pub epoch: u32,
@@ -849,6 +865,36 @@ impl BalaBlu {
         let from = from_index.unwrap_or(0) as u32;
         let limit = limit.unwrap_or(50).min(100) as u32;
         (from..self.claims.len().min(from.saturating_add(limit))).filter_map(|i| self.claims.get(i).cloned()).collect()
+    }
+
+    /// Everything a page needs about many claims, in one call.
+    pub fn get_cards(&self, from_index: Option<u64>, limit: Option<u64>) -> Vec<ClaimCard> {
+        self.get_claims(from_index, limit)
+            .into_iter()
+            .map(|c| {
+                let pts = self.markets.get(&(c.id, c.epoch, Currency::Points.tag()));
+                let usd = self.markets.get(&(c.id, c.epoch, Currency::Usdc.tag()));
+                let points_odds_bps = pts.map(|m| m.pool.price_fact_bps()).unwrap_or(5_000);
+                let usdc_odds_bps = usd.map(|m| m.pool.price_fact_bps());
+                let odds_bps = match usd {
+                    Some(m) if m.volume > 0 => m.pool.price_fact_bps(),
+                    _ => points_odds_bps,
+                };
+                let last = c.audits.iter().rev().filter_map(|a| self.audits.get(*a as u32)).find(|a| a.status == AuditStatus::Final);
+                ClaimCard {
+                    odds_bps,
+                    points_odds_bps,
+                    usdc_odds_bps,
+                    status: pts.map(|m| m.status).unwrap_or(MarketStatus::Open),
+                    volume_points: U128(pts.map(|m| m.volume).unwrap_or(0)),
+                    volume_usdc: U128(usd.map(|m| m.volume).unwrap_or(0)),
+                    last_outcome: last.and_then(|a| a.outcome),
+                    last_audit: last.map(|a| a.id),
+                    evidence_count: c.evidence.len() as u32,
+                    claim: c,
+                }
+            })
+            .collect()
     }
 
     pub fn get_evidence(&self, claim_id: u64) -> Vec<Evidence> {
