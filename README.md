@@ -10,6 +10,8 @@ Built at **NEAR HACKATHON** (Nov 2026). Work in progress.
 
 ## Status
 - [x] On-chain check of NEAR AI Cloud enclave signatures (`contract/`, tested against a real signed reply)
+  - Live on testnet: `balabluapp.testnet`. Key registered in tx `3itSKL6gKPJxh6qsabUf2Az85V7rPybHGiRYWu39HQhz`.
+  - `check_ai_reply` with the real reply in `contract/fixtures/` returns `valid: true`; change one byte of the response and it returns `signature does not match`.
 - [ ] Markets, practice mode, audits, appeals
 - [ ] Web app, Ask Blu, NEAR Intents deposits
 
