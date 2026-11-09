@@ -1,0 +1,8 @@
+{
+  "source": "GET https://cloud-api.near.ai/v1/signature/7dfda5694eb044509fc734b2a751292e?model=Qwen/Qwen3.8-27B&signing_algo=ed25519 (2026-11-09)",
+  "text": "Qwen/Qwen3.8-27B:8c14cc76bf2e95d24938addd18b5990b56de88fce054a193c5e0efc928f29b1b:b0342223ed416acfbd4906e8255636f4dfa303e4254f253d656b04a4d0fc7101",
+  "signature": "2001c1a753206586099bb28b589cbbdc92e631c106fa3030034dc85bdec9d0909b293fb5833aeb1c65b8644b118ed6bc8333287199ecd970f48cf981fdfd5908",
+  "signing_address": "89154a43a47684742c3d1753252bb6f49f61da9d8c84fc9b1def2df130cb2d93",
+  "signing_algo": "ed25519",
+  "signature_kind": "provider_tee"
+}

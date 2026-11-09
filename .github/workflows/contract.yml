@@ -1,0 +1,50 @@
+name: contract
+
+on:
+  push:
+    paths: ["contract/**", ".github/workflows/contract.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contract
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
+      - name: Unit tests
+        run: cargo test -- --nocapture
+      - name: Install cargo-near
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/latest/download/cargo-near-installer.sh | sh
+      - name: Build wasm
+        run: cargo near build non-reproducible-wasm --no-abi
+      - name: Wasm info
+        run: |
+          ls -la target/near
+          sha256sum target/near/balablu.wasm | tee target/near/balablu.wasm.sha256
+          echo "${GITHUB_SHA}" > target/near/COMMIT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: balablu-wasm
+          path: contract/target/near/
+      - name: Publish wasm to the contract-latest release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: contract-latest
+          name: Contract build (latest main)
+          prerelease: true
+          make_latest: false
+          files: |
+            contract/target/near/balablu.wasm
+            contract/target/near/balablu.wasm.sha256
+            contract/target/near/COMMIT

@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+node_modules/
+target/
+# private planning notes (local only)
+ROADMAP.md
+YOUR-CHECKLIST.md

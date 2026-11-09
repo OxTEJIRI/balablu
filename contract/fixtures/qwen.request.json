@@ -1,0 +1,1 @@
+{"model": "Qwen/Qwen3.8-27B", "messages": [{"role": "user", "content": "BALABLU-AUDIT:test:abc. Reply with exactly: {\"verdict\":\"TRUE\"}"}], "max_tokens": 200, "stream": false}
