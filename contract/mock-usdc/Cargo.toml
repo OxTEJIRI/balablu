@@ -1,0 +1,16 @@
+[package]
+name = "mock-usdc"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Free-mint test USDC (NEP-141 subset) for BalaBlu on testnet. Not for mainnet."
+repository = "https://github.com/OxTEJIRI/balablu"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = "5"
+
+[dev-dependencies]
+near-sdk = { version = "5", features = ["unit-testing"] }

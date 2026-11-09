@@ -16,6 +16,9 @@ hex = "0.4"
 [dev-dependencies]
 near-sdk = { version = "5", features = ["unit-testing"] }
 
+[workspace]
+members = [".", "mock-usdc"]
+
 [profile.release]
 codegen-units = 1
 opt-level = "z"

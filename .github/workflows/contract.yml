@@ -22,20 +22,24 @@ jobs:
         with:
           workspaces: contract
       - name: Unit tests
-        run: cargo test -- --nocapture
+        run: cargo test --workspace
       - name: Install cargo-near
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/latest/download/cargo-near-installer.sh | sh
       - name: Build wasm
-        run: cargo near build non-reproducible-wasm --no-abi
-      - name: Wasm info
         run: |
-          ls -la target/near
-          sha256sum target/near/balablu.wasm | tee target/near/balablu.wasm.sha256
-          echo "${GITHUB_SHA}" > target/near/COMMIT
+          cargo near build non-reproducible-wasm --no-abi
+          cargo near build non-reproducible-wasm --no-abi --manifest-path mock-usdc/Cargo.toml
+      - name: Collect wasm
+        run: |
+          mkdir -p dist
+          find target/near -name '*.wasm' -exec cp {} dist/ \;
+          ls -la dist
+          (cd dist && sha256sum *.wasm | tee SHA256SUMS)
+          echo "${GITHUB_SHA}" > dist/COMMIT
       - uses: actions/upload-artifact@v4
         with:
           name: balablu-wasm
-          path: contract/target/near/
+          path: contract/dist/
       - name: Publish wasm to the contract-latest release
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
@@ -45,6 +49,6 @@ jobs:
           prerelease: true
           make_latest: false
           files: |
-            contract/target/near/balablu.wasm
-            contract/target/near/balablu.wasm.sha256
-            contract/target/near/COMMIT
+            contract/dist/*.wasm
+            contract/dist/SHA256SUMS
+            contract/dist/COMMIT
