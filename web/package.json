@@ -1,0 +1,8 @@
+{
+  "name": "balablu-web",
+  "private": true,
+  "type": "module",
+  "description": "BalaBlu web app: static Preact (vendored, no build) + Vercel functions in api/. No npm dependencies.",
+  "engines": { "node": ">=20" },
+  "scripts": { "dev": "node dev.mjs" }
+}

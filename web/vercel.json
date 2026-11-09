@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "cleanUrls": false,
+  "rewrites": [
+    { "source": "/((?!api/|js/|vendor/|styles.css|favicon.svg).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    { "source": "/(js|vendor)/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=300" }] }
+  ]
+}

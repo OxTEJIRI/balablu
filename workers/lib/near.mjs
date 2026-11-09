@@ -7,7 +7,8 @@ import { join } from 'node:path';
 
 export const NETWORK = process.env.NEAR_NETWORK || 'testnet';
 export const CONTRACT = process.env.BALABLU_CONTRACT || 'balabluapp.testnet';
-export const RPC = process.env.NEAR_RPC || (NETWORK === 'mainnet' ? 'https://rpc.mainnet.near.org' : 'https://rpc.testnet.near.org');
+// rpc.*.near.org is deprecated and rate-limited; FastNEAR is the default
+export const RPC = process.env.NEAR_RPC || (NETWORK === 'mainnet' ? 'https://free.rpc.fastnear.com' : 'https://test.rpc.fastnear.com');
 const NEAR_BIN = process.env.NEAR_CLI || 'near';
 
 export async function view(method, args = {}, contract = CONTRACT) {

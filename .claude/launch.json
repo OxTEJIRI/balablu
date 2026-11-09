@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "balablu-web", "runtimeExecutable": "node", "runtimeArgs": ["web/dev.mjs"], "port": 3000 }
+  ]
+}

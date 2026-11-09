@@ -1,0 +1,7 @@
+{
+  "text": "Qwen/Qwen3.8-27B:a6d6ac8f912ae0c38261ebd73452bfaf4472876a1e00c5d176207edeed13d97d:ffa1bbbaabf9eb3bbb1acdf525a8969abc225b337ee86658062d08935b58ab68",
+  "signature": "d174b2cd58bbdd812bbbfea57674b25dd817f8ce775e4f7f35e48318133012f9a7fa39856468bc1ec48984401f008ae5d747d20e40f357a5f03bd745f2be8000",
+  "signing_address": "89154a43a47684742c3d1753252bb6f49f61da9d8c84fc9b1def2df130cb2d93",
+  "signing_algo": "ed25519",
+  "signature_kind": "provider_tee"
+}

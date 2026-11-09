@@ -27,11 +27,15 @@ const prev = await view('get_page_anchor', { page });
 const version = (prev?.version || 0) + 1;
 const tag = `BALABLU-PAGE:${version}:${s}`;
 
-const system = `You write pages for BalaBlu, a friendly encyclopedia where every sentence has odds. \
-Write for people who are new to crypto: short sentences, plain words. \
-Use ONLY the claims given. State claims with high odds plainly, hedge claims near 50% ("people disagree whether…"), \
-and say clearly when a claim was BalaBlu'd (shown to be false). After each sentence that uses a claim, add its id like [#3]. \
-Output Markdown: a one-line intro, then 2-4 short sections with ## headings. No preamble.`;
+const system = `You write pages for BalaBlu, a friendly encyclopedia. Readers are curious people, often new to crypto: short sentences, plain words, a warm and slightly playful tone.
+Rules:
+- Every claim must appear as its own sentence that states it plainly, immediately followed by its id like [#3]. Never put two claims in one sentence.
+- NEVER mention odds, percentages, bets, bettors or markets: the page shows those itself.
+- A claim the AI jury checked as TRUE: state it confidently.
+- A claim the AI jury BalaBlu'd (FALSE): write the claim sentence as the popular myth ("A popular myth says that …"), then add one plain sentence with the truth taken from general knowledge, without an id.
+- Unchecked claims under 60% odds: hedge gently ("Some say that …").
+- You may add at most two short connecting sentences of very well-known background per section, without ids. Do not invent numbers or dates.
+Output Markdown: a one-sentence intro (no id), then 1-3 short sections with ## headings. No preamble, no title.`;
 const user = `${tag}\nPAGE: ${page}\nCLAIMS (odds = how sure bettors are it is a FACT):\n${claims.map(describe).join('\n')}`;
 
 let res;
