@@ -1,30 +1,36 @@
 //! BalaBlu contract — the encyclopedia where every fact has odds.
 //!
-//! * Claims: short checkable sentences, each with a rule for FACT / BALABLU.
-//! * Markets: one binary FPMM per claim, per epoch, per currency
-//!   (free practice points, or USDC). Perpetual: when an epoch is settled a new
-//!   one opens near the verdict.
-//! * Jury check: NEAR AI Cloud enclave replies are verified on-chain
-//!   (`check_ai_reply`): the contract re-hashes the exact request/response
-//!   bytes and checks the enclave's ed25519 signature itself.
+//! * Claims: short checkable sentences, each with a rule for FACT / BALABLU,
+//!   plus evidence quotes stored on-chain.
+//! * Markets: one binary FPMM per claim, per epoch, per currency (free
+//!   practice points, or USDC). Perpetual: after each verdict a new epoch
+//!   opens near the verdict.
+//! * Audits: surprise (keeper + on-chain randomness) or requested (fee).
+//!   Betting pauses. The contract writes the jury question itself; anyone can
+//!   submit the jury's signed replies, and the contract verifies every
+//!   enclave signature, the exact question, and the verdicts before paying.
+//! * Appeals: bond -> 5-model panel -> council window -> final.
+//! * Pages: AI-written page versions are anchored (signed reply hashes).
 
 pub mod fpmm;
+pub mod jury;
 #[cfg(test)]
 mod tests;
 
 use fpmm::{Pool, BPS};
+use jury::{SignedReply, Verdict, GATEWAY};
 use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::store::{LookupMap, Vector};
 use near_sdk::{
-    env, ext_contract, near, require, AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault,
-    Promise, PromiseOrValue,
+    env, ext_contract, near, require, AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise,
+    PromiseOrValue,
 };
 
-/// Every jury prompt carries this tag so a signed reply can only be used for
-/// the audit it was produced for.
-pub const BINDING_PREFIX: &str = "BALABLU-AUDIT:";
 /// 1 USDC / 1 practice point (both use 6 decimals).
 pub const ONE: u128 = 1_000_000;
+pub const MAX_EVIDENCE: usize = 8;
+/// Attached NEAR to add evidence (pays its storage, deters spam).
+pub const EVIDENCE_DEPOSIT: NearToken = NearToken::from_millinear(10);
 
 #[near(serializers = [borsh])]
 #[derive(BorshStorageKey)]
@@ -35,6 +41,9 @@ enum StorageKey {
     Markets,
     Positions,
     Wallets,
+    Evidence,
+    Audits,
+    Pages,
 }
 
 #[near(serializers = [borsh, json])]
@@ -74,7 +83,7 @@ pub enum MarketStatus {
 pub enum Outcome {
     Fact,
     Balablu,
-    /// Jury split or no evidence: refund at the last price.
+    /// Jury split or not enough evidence: refund at the last odds.
     Unresolvable,
 }
 
@@ -91,6 +100,90 @@ pub struct Claim {
     /// Current (open) epoch.
     pub epoch: u32,
     pub created_at_ms: u64,
+    pub evidence: Vec<u64>,
+    pub active_audit: Option<u64>,
+    pub last_roll_ms: u64,
+    pub audits: Vec<u64>,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Debug, Clone)]
+pub struct Evidence {
+    pub id: u64,
+    pub claim_id: u64,
+    pub by: AccountId,
+    pub url: String,
+    pub quote: String,
+    pub added_ms: u64,
+    /// How many jury rounds read it (evidence rewards build on this).
+    pub uses: u32,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditKind {
+    Surprise,
+    Requested,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditStatus {
+    /// Round 1: waiting for the 3-model jury.
+    AwaitingJury,
+    /// Verdict in; anyone may appeal before the deadline.
+    AppealWindow,
+    /// Round 2: waiting for the 5-model panel.
+    AwaitingPanel,
+    /// Panel verdict in; the council may overrule before the deadline.
+    CouncilWindow,
+    Final,
+    Cancelled,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Debug, Clone)]
+pub struct Vote {
+    pub round: u8,
+    pub model: String,
+    pub verdict: Verdict,
+    pub reason: String,
+    pub request_sha256: String,
+    pub response_sha256: String,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Debug, Clone)]
+pub struct Audit {
+    pub id: u64,
+    pub claim_id: u64,
+    pub epoch: u32,
+    pub kind: AuditKind,
+    pub requester: Option<AccountId>,
+    pub fee: U128,
+    pub status: AuditStatus,
+    pub round: u8,
+    pub evidence_ids: Vec<u64>,
+    pub evidence_root: String,
+    pub started_ms: u64,
+    pub deadline_ms: u64,
+    pub first_outcome: Option<Outcome>,
+    pub outcome: Option<Outcome>,
+    pub votes: Vec<Vote>,
+    pub appellant: Option<AccountId>,
+    pub bond: U128,
+    pub council_overruled: bool,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Debug, Clone)]
+pub struct PageAnchor {
+    pub page: String,
+    pub version: u32,
+    pub model: String,
+    pub request_sha256: String,
+    pub response_sha256: String,
+    pub anchored_ms: u64,
 }
 
 #[near(serializers = [borsh])]
@@ -133,6 +226,24 @@ pub struct Config {
     pub practice_seed: U128,
     /// USDC the owner puts in when a new epoch opens (0 = practice only).
     pub usdc_seed: U128,
+    /// Runs surprise-audit rolls and anchors pages.
+    pub keeper: AccountId,
+    /// Final say after a panel (a person, a multisig or a Sputnik DAO).
+    pub council: AccountId,
+    /// Round 1 jury models (all must vote).
+    pub jury_models: Vec<String>,
+    /// Round 2 appeal panel models (all must vote).
+    pub panel_models: Vec<String>,
+    /// USDC fee to request an audit.
+    pub audit_fee: U128,
+    /// USDC bond to appeal a verdict.
+    pub appeal_bond: U128,
+    pub appeal_window_ms: u64,
+    pub jury_timeout_ms: u64,
+    /// Chance (bps) that a surprise roll starts an audit.
+    pub surprise_bps: u32,
+    /// Min time between surprise rolls on one claim.
+    pub roll_interval_ms: u64,
 }
 
 // ---------- JSON views ----------
@@ -143,8 +254,18 @@ pub struct ReplyCheck {
     pub valid: bool,
     pub model: Option<String>,
     pub binding: Option<String>,
-    pub signed_text: Option<String>,
     pub reason: String,
+}
+
+#[near(serializers = [json])]
+#[derive(Debug, Clone)]
+pub struct JuryPrompt {
+    pub audit_id: u64,
+    pub round: u8,
+    pub models: Vec<String>,
+    pub system: String,
+    pub user: String,
+    pub binding: String,
 }
 
 #[near(serializers = [json])]
@@ -198,13 +319,16 @@ trait FungibleToken {
 #[derive(PanicOnDefault)]
 pub struct BalaBlu {
     owner: AccountId,
-    /// lowercase hex ed25519 public key -> canonical NEAR AI model id
+    /// lowercase hex ed25519 public key -> model id, or GATEWAY
     jury_keys: LookupMap<String, String>,
     config: Config,
     claims: Vector<Claim>,
     markets: LookupMap<(u64, u32, u8), Market>,
     positions: LookupMap<(AccountId, u64, u32, u8), Position>,
     wallets: LookupMap<AccountId, Wallet>,
+    evidence: Vector<Evidence>,
+    audits: Vector<Audit>,
+    pages: LookupMap<String, PageAnchor>,
 }
 
 #[near]
@@ -269,7 +393,7 @@ impl BalaBlu {
         ok
     }
 
-    // ---------- claims ----------
+    // ---------- claims and evidence ----------
 
     /// Create a claim. Opens a practice market and, if `usdc_seed` > 0, a USDC
     /// market seeded from the owner's wallet. Owner only for now.
@@ -284,7 +408,8 @@ impl BalaBlu {
     ) -> u64 {
         self.assert_owner();
         require!(!text.is_empty() && text.len() <= 280, "claim text must be 1-280 chars");
-        require!(page.len() <= 80 && rule.len() <= 600 && sources.len() <= 10, "claim too long");
+        require!(!page.is_empty() && page.len() <= 80, "page must be 1-80 chars");
+        require!(rule.len() <= 600 && sources.len() <= 10, "claim too long");
         let id = self.claims.len() as u64;
         self.claims.push(Claim {
             id,
@@ -295,9 +420,44 @@ impl BalaBlu {
             creator: env::predecessor_account_id(),
             epoch: 0,
             created_at_ms: env::block_timestamp_ms(),
+            evidence: vec![],
+            active_audit: None,
+            last_roll_ms: 0,
+            audits: vec![],
         });
         self.open_markets(id, 0, fact_odds_bps, usdc_seed.0);
         id
+    }
+
+    /// Add a source quote the jury will read at the next audit. Attach 0.01 NEAR.
+    #[payable]
+    pub fn add_evidence(&mut self, claim_id: u64, url: String, quote: String) -> u64 {
+        require!(env::attached_deposit() >= EVIDENCE_DEPOSIT, "attach 0.01 NEAR to add evidence");
+        require!(url.starts_with("https://") && url.len() <= 300 && !url.contains('\n'), "url must be https and short");
+        require!(!quote.trim().is_empty() && quote.chars().count() <= 1_200, "quote must be 1-1200 chars");
+        let c = self.claim(claim_id);
+        require!(c.active_audit.is_none(), "evidence is frozen during an audit");
+        require!(c.evidence.len() < MAX_EVIDENCE, "this claim already has the maximum evidence");
+        let id = self.evidence.len() as u64;
+        self.evidence.push(Evidence {
+            id,
+            claim_id,
+            by: env::predecessor_account_id(),
+            url,
+            quote: quote.replace("END EVIDENCE", "END-EVIDENCE"),
+            added_ms: env::block_timestamp_ms(),
+            uses: 0,
+        });
+        self.claims.get_mut(claim_id as u32).unwrap().evidence.push(id);
+        id
+    }
+
+    /// Moderation: drop spam or off-topic evidence (not during an audit).
+    pub fn remove_evidence(&mut self, claim_id: u64, evidence_id: u64) {
+        self.assert_owner();
+        let c = self.claims.get_mut(claim_id as u32).unwrap_or_else(|| env::panic_str("no such claim"));
+        require!(c.active_audit.is_none(), "evidence is frozen during an audit");
+        c.evidence.retain(|e| *e != evidence_id);
     }
 
     // ---------- trading ----------
@@ -389,33 +549,182 @@ impl BalaBlu {
         U128(payout)
     }
 
-    // ---------- settlement (owner for now; Day 3: jury-verified audits) ----------
+    // ---------- audits ----------
 
-    pub fn set_paused(&mut self, claim_id: u64, paused: bool) {
-        self.assert_owner();
-        let epoch = self.claim(claim_id).epoch;
-        for c in [Currency::Points, Currency::Usdc] {
-            if let Some(m) = self.markets.get_mut(&(claim_id, epoch, c.tag())) {
-                require!(m.status != MarketStatus::Resolved, "already settled");
-                m.status = if paused { MarketStatus::Paused } else { MarketStatus::Open };
-            }
+    /// Anyone can ask the jury to check a claim now (pays the audit fee in USDC).
+    pub fn request_audit(&mut self, claim_id: u64) -> u64 {
+        let who = env::predecessor_account_id();
+        let fee = self.config.audit_fee.0;
+        if fee > 0 {
+            self.debit(&who, Currency::Usdc, fee);
+        }
+        self.start_audit(claim_id, AuditKind::Requested, Some(who), fee)
+    }
+
+    /// Keeper rolls the dice; with `surprise_bps` chance an audit starts now.
+    /// Returns the audit id if one started.
+    pub fn surprise_roll(&mut self, claim_id: u64) -> Option<u64> {
+        require!(env::predecessor_account_id() == self.config.keeper, "only the keeper rolls");
+        let now = env::block_timestamp_ms();
+        let interval = self.config.roll_interval_ms;
+        let c = self.claim(claim_id);
+        if c.active_audit.is_some() || now < c.last_roll_ms + interval {
+            return None;
+        }
+        self.claims.get_mut(claim_id as u32).unwrap().last_roll_ms = now;
+        let seed = env::random_seed();
+        let roll = u16::from_le_bytes([seed[0], seed[1]]) as u32 % 10_000;
+        if roll < self.config.surprise_bps {
+            Some(self.start_audit(claim_id, AuditKind::Surprise, None, 0))
+        } else {
+            None
         }
     }
 
-    /// Settle the current epoch and open the next one near the verdict.
-    pub fn settle_epoch(&mut self, claim_id: u64, outcome: Outcome) -> u32 {
-        self.assert_owner();
-        self.settle(claim_id, outcome)
+    /// Submit the jury's signed replies. Anyone can do this: the contract
+    /// checks every signature, the exact question and the verdicts itself.
+    pub fn submit_votes(&mut self, audit_id: u64, replies: Vec<SignedReply>) -> Outcome {
+        let a = self.audit(audit_id).clone();
+        let models = match a.status {
+            AuditStatus::AwaitingJury => self.config.jury_models.clone(),
+            AuditStatus::AwaitingPanel => self.config.panel_models.clone(),
+            _ => env::panic_str("this audit is not waiting for votes"),
+        };
+        let expected = self.jury_prompt(&a).user;
+        let mut votes: Vec<Vote> = vec![];
+        for r in &replies {
+            let key_model = self
+                .jury_keys
+                .get(&r.public_key_hex.trim().trim_start_matches("0x").to_lowercase())
+                .cloned()
+                .unwrap_or_else(|| env::panic_str("unregistered enclave key"));
+            let checked = jury::verify(r, &key_model).unwrap_or_else(|e| env::panic_str(&e));
+            require!(models.contains(&checked.model), "model is not on this round's jury");
+            require!(!votes.iter().any(|v| v.model == checked.model), "one vote per model");
+            if key_model != GATEWAY {
+                let req_model = checked.request.get("model").and_then(|m| m.as_str()).unwrap_or("");
+                require!(req_model == checked.model, "request model does not match the key");
+            }
+            jury::check_jury_request(&checked.request, &expected).unwrap_or_else(|e| env::panic_str(&e));
+            let (verdict, reason) = jury::parse_verdict(&checked.response).unwrap_or_else(|e| env::panic_str(&e));
+            votes.push(Vote {
+                round: a.round,
+                model: checked.model,
+                verdict,
+                reason,
+                request_sha256: checked.request_sha256,
+                response_sha256: checked.response_sha256,
+            });
+        }
+        require!(votes.len() == models.len(), "every model on the jury must vote");
+        self.apply_round(audit_id, votes)
+    }
+
+    /// Disagree with the jury? Post the bond (USDC) to send it to the 5-model panel.
+    pub fn appeal(&mut self, audit_id: u64) {
+        let who = env::predecessor_account_id();
+        let a = self.audit(audit_id).clone();
+        require!(a.status == AuditStatus::AppealWindow, "this audit cannot be appealed now");
+        require!(env::block_timestamp_ms() < a.deadline_ms, "the appeal window has closed");
+        let bond = self.config.appeal_bond.0;
+        self.debit(&who, Currency::Usdc, bond);
+        let timeout = self.config.jury_timeout_ms;
+        let a = self.audits.get_mut(audit_id as u32).unwrap();
+        a.status = AuditStatus::AwaitingPanel;
+        a.round = 2;
+        a.appellant = Some(who);
+        a.bond = U128(bond);
+        a.deadline_ms = env::block_timestamp_ms() + timeout;
+    }
+
+    /// Council's final say after a panel verdict (during the council window).
+    pub fn council_decide(&mut self, audit_id: u64, outcome: Outcome) {
+        require!(env::predecessor_account_id() == self.config.council, "only the council");
+        let a = self.audit(audit_id);
+        require!(a.status == AuditStatus::CouncilWindow, "no panel verdict to review");
+        require!(env::block_timestamp_ms() < a.deadline_ms, "the council window has closed");
+        let a = self.audits.get_mut(audit_id as u32).unwrap();
+        if a.outcome != Some(outcome) {
+            a.council_overruled = true;
+        }
+        a.outcome = Some(outcome);
+        self.finalize_audit(audit_id);
+    }
+
+    /// After the window closes with no appeal (or no council action), anyone
+    /// can finalize: winners get paid and a new epoch opens.
+    pub fn finalize(&mut self, audit_id: u64) {
+        let a = self.audit(audit_id);
+        require!(
+            matches!(a.status, AuditStatus::AppealWindow | AuditStatus::CouncilWindow),
+            "nothing to finalize"
+        );
+        require!(env::block_timestamp_ms() >= a.deadline_ms, "the window is still open");
+        self.finalize_audit(audit_id);
+    }
+
+    /// If the jury or panel never answers, anyone can unstick the claim.
+    pub fn cancel_stale(&mut self, audit_id: u64) {
+        let a = self.audit(audit_id).clone();
+        require!(
+            matches!(a.status, AuditStatus::AwaitingJury | AuditStatus::AwaitingPanel),
+            "audit is not waiting for votes"
+        );
+        require!(env::block_timestamp_ms() >= a.deadline_ms, "the jury still has time");
+        if a.status == AuditStatus::AwaitingPanel {
+            // panel failed: keep the first verdict, return the appellant's bond
+            let au = self.audits.get_mut(audit_id as u32).unwrap();
+            au.outcome = au.first_outcome;
+            self.finalize_audit(audit_id);
+            return;
+        }
+        if let Some(r) = &a.requester {
+            self.credit(r, Currency::Usdc, a.fee.0);
+        }
+        self.set_markets_status(a.claim_id, a.epoch, MarketStatus::Open);
+        self.claims.get_mut(a.claim_id as u32).unwrap().active_audit = None;
+        self.audits.get_mut(audit_id as u32).unwrap().status = AuditStatus::Cancelled;
+    }
+
+    // ---------- pages ----------
+
+    /// Anchor a signed AI-written page version. The request must carry
+    /// `BALABLU-PAGE:<version>:<page-slug>`.
+    pub fn anchor_page(&mut self, page: String, version: u32, reply: SignedReply) {
+        require!(env::predecessor_account_id() == self.config.keeper, "only the keeper anchors pages");
+        let key_model = self
+            .jury_keys
+            .get(&reply.public_key_hex.trim().to_lowercase())
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("unregistered enclave key"));
+        let checked = jury::verify(&reply, &key_model).unwrap_or_else(|e| env::panic_str(&e));
+        let slug = jury::slug(&page);
+        let want = format!("{}{}:{}", jury::PAGE_PREFIX, version, slug);
+        require!(jury::find_tag(&reply.request.0, jury::PAGE_PREFIX).as_deref() == Some(want.as_str()), "page tag missing");
+        let last = self.pages.get(&slug).map(|p| p.version).unwrap_or(0);
+        require!(version == last + 1, "versions must go up by one");
+        self.pages.insert(
+            slug,
+            PageAnchor {
+                page,
+                version,
+                model: checked.model,
+                request_sha256: checked.request_sha256,
+                response_sha256: checked.response_sha256,
+                anchored_ms: env::block_timestamp_ms(),
+            },
+        );
     }
 
     // ---------- jury keys ----------
 
-    /// Register an enclave signing key (verified off-chain against its TDX +
-    /// GPU attestation report) for a model.
+    /// Register an enclave signing key (checked off-chain against its TDX +
+    /// GPU attestation report). `model` = model id, or "*gateway*" for the
+    /// NEAR AI gateway key that signs third-party attested models.
     pub fn register_jury_key(&mut self, model: String, public_key_hex: String) {
         self.assert_owner();
-        require!(!model.is_empty() && !model.contains(':'), "bad model id");
-        let pk = decode_fixed::<32>(&public_key_hex).unwrap_or_else(|| env::panic_str("bad public key"));
+        require!(!model.is_empty() && (model == GATEWAY || !model.contains(':')), "bad model id");
+        let pk = jury::decode_fixed::<32>(&public_key_hex).unwrap_or_else(|| env::panic_str("bad public key"));
         self.jury_keys.insert(hex::encode(pk), model);
     }
 
@@ -428,33 +737,25 @@ impl BalaBlu {
         self.jury_keys.get(&public_key_hex.to_lowercase()).cloned()
     }
 
-    /// Verify a NEAR AI Cloud `provider_tee` ed25519 signature over the exact
-    /// request and response bytes.
-    pub fn check_ai_reply(
-        &self,
-        request: Base64VecU8,
-        response: Base64VecU8,
-        public_key_hex: String,
-        signature_hex: String,
-    ) -> ReplyCheck {
-        let fail = |reason: &str| ReplyCheck { valid: false, model: None, binding: None, signed_text: None, reason: reason.into() };
-        let pk = match decode_fixed::<32>(&public_key_hex) {
-            Some(pk) => pk,
-            None => return fail("bad public key"),
-        };
-        let model = match self.jury_keys.get(&hex::encode(pk)) {
-            Some(m) => m.clone(),
-            None => return fail("unregistered key"),
-        };
-        let sig = match decode_fixed::<64>(&signature_hex) {
-            Some(s) => s,
-            None => return fail("bad signature encoding"),
-        };
-        let text = format!("{}:{}:{}", model, hex::encode(env::sha256(&request.0)), hex::encode(env::sha256(&response.0)));
-        if !env::ed25519_verify(&sig, text.as_bytes(), &pk) {
-            return ReplyCheck { valid: false, model: Some(model), binding: None, signed_text: Some(text), reason: "signature does not match".into() };
+    /// Check any signed NEAR AI reply (no audit needed). Handy for explorers.
+    pub fn check_ai_reply(&self, request: Base64VecU8, response: Base64VecU8, public_key_hex: String, signature_hex: String) -> ReplyCheck {
+        let reply = SignedReply { request, response, public_key_hex, signature_hex };
+        if jury::decode_fixed::<32>(&reply.public_key_hex).is_none() {
+            return ReplyCheck { valid: false, model: None, binding: None, reason: "bad public key".into() };
         }
-        ReplyCheck { valid: true, model: Some(model), binding: find_binding(&request.0), signed_text: Some(text), reason: "ok".into() }
+        let key_model = match self.jury_keys.get(&reply.public_key_hex.trim().to_lowercase()) {
+            Some(m) => m.clone(),
+            None => return ReplyCheck { valid: false, model: None, binding: None, reason: "unregistered key".into() },
+        };
+        match jury::verify(&reply, &key_model) {
+            Ok(c) => ReplyCheck {
+                valid: true,
+                model: Some(c.model),
+                binding: jury::find_tag(&reply.request.0, jury::AUDIT_PREFIX),
+                reason: "ok".into(),
+            },
+            Err(e) => ReplyCheck { valid: false, model: None, binding: None, reason: e },
+        }
     }
 
     // ---------- admin ----------
@@ -462,6 +763,7 @@ impl BalaBlu {
     pub fn set_config(&mut self, config: Config) {
         self.assert_owner();
         require!(config.fee_bps <= 500, "fee too high");
+        require!(!config.jury_models.is_empty() && config.panel_models.len() >= config.jury_models.len(), "bad jury lists");
         self.config = config;
     }
 
@@ -486,9 +788,32 @@ impl BalaBlu {
     pub fn get_claims(&self, from_index: Option<u64>, limit: Option<u64>) -> Vec<Claim> {
         let from = from_index.unwrap_or(0) as u32;
         let limit = limit.unwrap_or(50).min(100) as u32;
-        (from..self.claims.len().min(from.saturating_add(limit)))
-            .filter_map(|i| self.claims.get(i).cloned())
-            .collect()
+        (from..self.claims.len().min(from.saturating_add(limit))).filter_map(|i| self.claims.get(i).cloned()).collect()
+    }
+
+    pub fn get_evidence(&self, claim_id: u64) -> Vec<Evidence> {
+        match self.claims.get(claim_id as u32) {
+            Some(c) => c.evidence.iter().filter_map(|i| self.evidence.get(*i as u32).cloned()).collect(),
+            None => vec![],
+        }
+    }
+
+    pub fn audits_count(&self) -> u64 {
+        self.audits.len() as u64
+    }
+
+    pub fn get_audit(&self, audit_id: u64) -> Option<Audit> {
+        self.audits.get(audit_id as u32).cloned()
+    }
+
+    /// The exact question the jury must be asked for this audit's current round.
+    pub fn get_jury_prompt(&self, audit_id: u64) -> Option<JuryPrompt> {
+        let a = self.audits.get(audit_id as u32)?;
+        Some(self.jury_prompt(a))
+    }
+
+    pub fn get_page_anchor(&self, page: String) -> Option<PageAnchor> {
+        self.pages.get(&jury::slug(&page)).cloned()
     }
 
     pub fn get_market(&self, claim_id: u64, currency: Currency, epoch: Option<u32>) -> Option<MarketView> {
@@ -536,7 +861,7 @@ impl BalaBlu {
 impl BalaBlu {
     fn fresh(owner: AccountId, usdc_token: AccountId, max_bet_usdc: U128) -> Self {
         Self {
-            owner,
+            owner: owner.clone(),
             jury_keys: LookupMap::new(StorageKey::JuryKeys),
             config: Config {
                 usdc_token,
@@ -545,11 +870,34 @@ impl BalaBlu {
                 practice_grant: U128(1_000 * ONE),
                 practice_seed: U128(10_000 * ONE),
                 usdc_seed: U128(0),
+                keeper: owner.clone(),
+                council: owner,
+                jury_models: vec![
+                    "Qwen/Qwen3.8-27B".into(),
+                    "deepseek-ai/DeepSeek-V4.1-Flash-1017".into(),
+                    "z-ai/glm-5.3-flash".into(),
+                ],
+                panel_models: vec![
+                    "Qwen/Qwen3.8-27B".into(),
+                    "deepseek-ai/DeepSeek-V4.1-Flash-1017".into(),
+                    "z-ai/glm-5.3-flash".into(),
+                    "moonshotai/kimi-k2.6".into(),
+                    "z-ai/glm-5.3".into(),
+                ],
+                audit_fee: U128(ONE / 2),
+                appeal_bond: U128(2 * ONE),
+                appeal_window_ms: 10 * 60 * 1000,
+                jury_timeout_ms: 60 * 60 * 1000,
+                surprise_bps: 2_000,
+                roll_interval_ms: 10 * 60 * 1000,
             },
             claims: Vector::new(StorageKey::Claims),
             markets: LookupMap::new(StorageKey::Markets),
             positions: LookupMap::new(StorageKey::Positions),
             wallets: LookupMap::new(StorageKey::Wallets),
+            evidence: Vector::new(StorageKey::Evidence),
+            audits: Vector::new(StorageKey::Audits),
+            pages: LookupMap::new(StorageKey::Pages),
         }
     }
 
@@ -559,6 +907,10 @@ impl BalaBlu {
 
     fn claim(&self, claim_id: u64) -> &Claim {
         self.claims.get(claim_id as u32).unwrap_or_else(|| env::panic_str("no such claim"))
+    }
+
+    fn audit(&self, audit_id: u64) -> &Audit {
+        self.audits.get(audit_id as u32).unwrap_or_else(|| env::panic_str("no such audit"))
     }
 
     fn wallet_mut(&mut self, who: &AccountId) -> &mut Wallet {
@@ -597,6 +949,126 @@ impl BalaBlu {
         }
     }
 
+    fn set_markets_status(&mut self, claim_id: u64, epoch: u32, status: MarketStatus) {
+        for c in [Currency::Points, Currency::Usdc] {
+            if let Some(m) = self.markets.get_mut(&(claim_id, epoch, c.tag())) {
+                if m.status != MarketStatus::Resolved {
+                    m.status = status;
+                }
+            }
+        }
+    }
+
+    fn start_audit(&mut self, claim_id: u64, kind: AuditKind, requester: Option<AccountId>, fee: u128) -> u64 {
+        let c = self.claim(claim_id).clone();
+        require!(c.active_audit.is_none(), "this claim is already being audited");
+        let m = self.markets.get(&(claim_id, c.epoch, Currency::Points.tag())).unwrap_or_else(|| env::panic_str("no market"));
+        require!(m.status == MarketStatus::Open, "market is not open");
+        let items: Vec<(String, String)> = c
+            .evidence
+            .iter()
+            .filter_map(|i| self.evidence.get(*i as u32).map(|e| (e.url.clone(), e.quote.clone())))
+            .collect();
+        let root = hex::encode(env::sha256(jury::evidence_section(&items).as_bytes()));
+        let id = self.audits.len() as u64;
+        let now = env::block_timestamp_ms();
+        self.audits.push(Audit {
+            id,
+            claim_id,
+            epoch: c.epoch,
+            kind,
+            requester,
+            fee: U128(fee),
+            status: AuditStatus::AwaitingJury,
+            round: 1,
+            evidence_ids: c.evidence.clone(),
+            evidence_root: root,
+            started_ms: now,
+            deadline_ms: now + self.config.jury_timeout_ms,
+            first_outcome: None,
+            outcome: None,
+            votes: vec![],
+            appellant: None,
+            bond: U128(0),
+            council_overruled: false,
+        });
+        self.set_markets_status(claim_id, c.epoch, MarketStatus::Paused);
+        let cm = self.claims.get_mut(claim_id as u32).unwrap();
+        cm.active_audit = Some(id);
+        cm.audits.push(id);
+        id
+    }
+
+    fn jury_prompt(&self, a: &Audit) -> JuryPrompt {
+        let c = self.claim(a.claim_id);
+        let items: Vec<(String, String)> = a
+            .evidence_ids
+            .iter()
+            .filter_map(|i| self.evidence.get(*i as u32).map(|e| (e.url.clone(), e.quote.clone())))
+            .collect();
+        let binding = jury::audit_binding(a.id, a.round, &a.evidence_root);
+        let user = jury::jury_user_prompt(&binding, &c.text, &c.rule, &jury::evidence_section(&items));
+        let models = if a.round == 1 { self.config.jury_models.clone() } else { self.config.panel_models.clone() };
+        JuryPrompt { audit_id: a.id, round: a.round, models, system: jury::JURY_SYSTEM.to_string(), user, binding }
+    }
+
+    /// Count votes for a round. Majority of the round's models wins; otherwise
+    /// the claim is unresolvable (refund at last odds).
+    pub(crate) fn apply_round(&mut self, audit_id: u64, votes: Vec<Vote>) -> Outcome {
+        let n = votes.len();
+        let fact = votes.iter().filter(|v| v.verdict == Verdict::Fact).count();
+        let bla = votes.iter().filter(|v| v.verdict == Verdict::Balablu).count();
+        let outcome = if fact * 2 > n {
+            Outcome::Fact
+        } else if bla * 2 > n {
+            Outcome::Balablu
+        } else {
+            Outcome::Unresolvable
+        };
+        let window = self.config.appeal_window_ms;
+        let now = env::block_timestamp_ms();
+        let a = self.audits.get_mut(audit_id as u32).unwrap();
+        let ev_ids = a.evidence_ids.clone();
+        a.votes.extend(votes);
+        a.outcome = Some(outcome);
+        a.deadline_ms = now + window;
+        if a.round == 1 {
+            a.first_outcome = Some(outcome);
+            a.status = AuditStatus::AppealWindow;
+        } else {
+            a.status = AuditStatus::CouncilWindow;
+        }
+        for id in ev_ids {
+            if let Some(e) = self.evidence.get_mut(id as u32) {
+                e.uses += 1;
+            }
+        }
+        outcome
+    }
+
+    fn finalize_audit(&mut self, audit_id: u64) {
+        let a = self.audit(audit_id).clone();
+        let outcome = a.outcome.unwrap_or(Outcome::Unresolvable);
+        let owner = self.owner.clone();
+        // the bond comes back if the appeal changed the result (or the panel never answered)
+        if let Some(app) = &a.appellant {
+            let panel_answered = a.status == AuditStatus::CouncilWindow;
+            if !panel_answered || Some(outcome) != a.first_outcome {
+                self.credit(app, Currency::Usdc, a.bond.0);
+            } else {
+                self.credit(&owner, Currency::Usdc, a.bond.0);
+            }
+        }
+        self.credit(&owner, Currency::Usdc, a.fee.0);
+        {
+            let au = self.audits.get_mut(audit_id as u32).unwrap();
+            au.status = AuditStatus::Final;
+            au.outcome = Some(outcome);
+        }
+        self.claims.get_mut(a.claim_id as u32).unwrap().active_audit = None;
+        self.settle(a.claim_id, outcome);
+    }
+
     /// Open the practice market (seeded with free points) and, if the owner
     /// can fund it, the USDC market.
     fn open_markets(&mut self, claim_id: u64, epoch: u32, fact_odds_bps: u32, usdc_seed: u128) {
@@ -626,7 +1098,8 @@ impl BalaBlu {
         }
     }
 
-    fn settle(&mut self, claim_id: u64, outcome: Outcome) -> u32 {
+    /// Resolve the current epoch's markets and open the next epoch.
+    pub(crate) fn settle(&mut self, claim_id: u64, outcome: Outcome) -> u32 {
         let epoch = self.claim(claim_id).epoch;
         let mut last_odds = 5_000u32;
         for c in [Currency::Points, Currency::Usdc] {
@@ -667,26 +1140,5 @@ impl BalaBlu {
         let seed = self.config.usdc_seed.0;
         self.open_markets(claim_id, next, next_odds, seed);
         next
-    }
-}
-
-fn decode_fixed<const N: usize>(s: &str) -> Option<[u8; N]> {
-    let s = s.trim().trim_start_matches("0x");
-    hex::decode(s).ok()?.try_into().ok()
-}
-
-/// Extract `BALABLU-AUDIT:<id>:<root>` from the raw request bytes.
-pub fn find_binding(request: &[u8]) -> Option<String> {
-    let text = String::from_utf8_lossy(request);
-    let start = text.find(BINDING_PREFIX)?;
-    let tag: String = text[start..]
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '-'))
-        .collect();
-    let parts: Vec<&str> = tag.split(':').collect();
-    if parts.len() == 3 && !parts[1].is_empty() && !parts[2].is_empty() {
-        Some(tag)
-    } else {
-        None
     }
 }
