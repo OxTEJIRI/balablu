@@ -750,3 +750,68 @@ mod real_jury {
         c.submit_votes(1, replies());
     }
 }
+
+// ---------------- guests (no wallet) ----------------
+
+fn relayer() -> AccountId {
+    acc("relay.testnet")
+}
+fn guest() -> AccountId {
+    acc("g7f3a2c1.guest")
+}
+
+fn with_relayer() -> BalaBlu {
+    let mut c = setup(0);
+    let mut cfg = c.get_config();
+    cfg.relayer = relayer();
+    call_as(owner(), 0);
+    c.set_config(cfg);
+    c
+}
+
+#[test]
+fn guest_plays_with_practice_points() {
+    let mut c = with_relayer();
+    let id = new_claim(&mut c, 5_000, 0);
+    call_as(relayer(), 0);
+    c.guest_claim_points(guest());
+    let s = c.guest_buy(guest(), id, Side::Balablu, U128(100 * ONE), None);
+    assert_eq!(c.get_position(guest(), id, 0, Currency::Points).balablu.0, s.0);
+    c.settle(id, Outcome::Balablu);
+    call_as(relayer(), 0);
+    assert_eq!(c.guest_redeem(guest(), id, 0).0, s.0);
+    assert_eq!(c.get_wallet(guest()).points.0, 900 * ONE + s.0);
+    assert_eq!(c.get_wallet(relayer()).points.0, 0, "the relayer itself gets nothing");
+}
+
+#[test]
+#[should_panic(expected = "only the relayer")]
+fn only_relayer_acts_for_guests() {
+    let mut c = with_relayer();
+    call_as(ada(), 0);
+    c.guest_claim_points(guest());
+}
+
+#[test]
+#[should_panic(expected = "guest ids end with .guest")]
+fn relayer_cannot_act_for_real_accounts() {
+    let mut c = with_relayer();
+    call_as(relayer(), 0);
+    c.guest_claim_points(ada());
+}
+
+#[test]
+fn relayer_files_practice_only_claims() {
+    let mut c = with_relayer();
+    call_as(relayer(), 0);
+    let id = c.create_claim("Eiffel Tower".into(), "The Eiffel Tower is taller than 300 metres.".into(), "FACT if its official height is over 300 m.".into(), vec![], 5_000, U128(0));
+    assert!(c.get_market(id, Currency::Points, None).is_some());
+}
+
+#[test]
+#[should_panic(expected = "only owner (or relayer for practice-only claims)")]
+fn relayer_cannot_seed_usdc_claims() {
+    let mut c = with_relayer();
+    call_as(relayer(), 0);
+    c.create_claim("p".into(), "t".into(), "a long enough rule".into(), vec![], 5_000, U128(ONE));
+}

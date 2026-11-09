@@ -230,6 +230,9 @@ pub struct Config {
     pub keeper: AccountId,
     /// Final say after a panel (a person, a multisig or a Sputnik DAO).
     pub council: AccountId,
+    /// Signs practice-point actions for guests (no wallet) and files Ask Blu
+    /// claim suggestions (practice markets only). Never touches USDC.
+    pub relayer: AccountId,
     /// Round 1 jury models (all must vote).
     pub jury_models: Vec<String>,
     /// Round 2 appeal panel models (all must vote).
@@ -351,14 +354,50 @@ impl BalaBlu {
     /// One-time grant of free practice points.
     pub fn claim_practice_points(&mut self) -> U128 {
         let who = env::predecessor_account_id();
+        self.grant_points(&who)
+    }
+
+    // ---------- guests (no wallet): practice points only, signed by the relayer ----------
+
+    pub fn guest_claim_points(&mut self, guest: AccountId) -> U128 {
+        self.assert_guest(&guest);
+        self.grant_points(&guest)
+    }
+
+    pub fn guest_buy(&mut self, guest: AccountId, claim_id: u64, side: Side, amount: U128, min_shares: Option<U128>) -> U128 {
+        self.assert_guest(&guest);
+        self.do_buy(&guest, claim_id, side, Currency::Points, amount, min_shares)
+    }
+
+    pub fn guest_sell(&mut self, guest: AccountId, claim_id: u64, side: Side, shares: U128, min_out: Option<U128>) -> U128 {
+        self.assert_guest(&guest);
+        self.do_sell(&guest, claim_id, side, Currency::Points, shares, min_out)
+    }
+
+    pub fn guest_redeem(&mut self, guest: AccountId, claim_id: u64, epoch: u32) -> U128 {
+        self.assert_guest(&guest);
+        self.do_redeem(&guest, claim_id, epoch, Currency::Points)
+    }
+}
+
+impl BalaBlu {
+    fn assert_guest(&self, guest: &AccountId) {
+        require!(env::predecessor_account_id() == self.config.relayer, "only the relayer acts for guests");
+        require!(guest.as_str().ends_with(".guest"), "guest ids end with .guest");
+    }
+
+    fn grant_points(&mut self, who: &AccountId) -> U128 {
         let grant = self.config.practice_grant.0;
-        let w = self.wallet_mut(&who);
+        let w = self.wallet_mut(who);
         require!(!w.got_points, "practice points already claimed");
         w.got_points = true;
         w.points += grant;
         U128(w.points)
     }
+}
 
+#[near]
+impl BalaBlu {
     /// NEP-141 receiver: USDC sent with `ft_transfer_call` lands in your
     /// BalaBlu wallet.
     pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: U128, msg: String) -> PromiseOrValue<U128> {
@@ -396,7 +435,8 @@ impl BalaBlu {
     // ---------- claims and evidence ----------
 
     /// Create a claim. Opens a practice market and, if `usdc_seed` > 0, a USDC
-    /// market seeded from the owner's wallet. Owner only for now.
+    /// market seeded from the owner's wallet. The owner, or the relayer for
+    /// Ask Blu suggestions (practice market only, no USDC).
     pub fn create_claim(
         &mut self,
         page: String,
@@ -406,7 +446,12 @@ impl BalaBlu {
         fact_odds_bps: u32,
         usdc_seed: U128,
     ) -> u64 {
-        self.assert_owner();
+        let caller = env::predecessor_account_id();
+        require!(
+            caller == self.owner || (caller == self.config.relayer && usdc_seed.0 == 0),
+            "only owner (or relayer for practice-only claims)"
+        );
+        require!(rule.len() >= 10, "a claim needs a rule");
         require!(!text.is_empty() && text.len() <= 280, "claim text must be 1-280 chars");
         require!(!page.is_empty() && page.len() <= 80, "page must be 1-80 chars");
         require!(rule.len() <= 600 && sources.len() <= 10, "claim too long");
@@ -465,6 +510,23 @@ impl BalaBlu {
     /// Bet `amount` on a side. Returns shares received (each pays 1 if right).
     pub fn buy(&mut self, claim_id: u64, side: Side, currency: Currency, amount: U128, min_shares: Option<U128>) -> U128 {
         let who = env::predecessor_account_id();
+        self.do_buy(&who, claim_id, side, currency, amount, min_shares)
+    }
+
+    /// Cash out shares early at the current odds. Returns collateral received.
+    pub fn sell(&mut self, claim_id: u64, side: Side, currency: Currency, shares: U128, min_out: Option<U128>) -> U128 {
+        let who = env::predecessor_account_id();
+        self.do_sell(&who, claim_id, side, currency, shares, min_out)
+    }
+
+    /// Collect winnings from a settled epoch.
+    pub fn redeem(&mut self, claim_id: u64, epoch: u32, currency: Currency) -> U128 {
+        let who = env::predecessor_account_id();
+        self.do_redeem(&who, claim_id, epoch, currency)
+    }
+
+    fn do_buy(&mut self, who: &AccountId, claim_id: u64, side: Side, currency: Currency, amount: U128, min_shares: Option<U128>) -> U128 {
+        let who = who.clone();
         let amount = amount.0;
         require!(amount >= ONE / 100, "minimum bet is 0.01");
         if currency == Currency::Usdc {
@@ -497,9 +559,8 @@ impl BalaBlu {
         U128(shares)
     }
 
-    /// Cash out shares early at the current odds. Returns collateral received.
-    pub fn sell(&mut self, claim_id: u64, side: Side, currency: Currency, shares: U128, min_out: Option<U128>) -> U128 {
-        let who = env::predecessor_account_id();
+    fn do_sell(&mut self, who: &AccountId, claim_id: u64, side: Side, currency: Currency, shares: U128, min_out: Option<U128>) -> U128 {
+        let who = who.clone();
         let shares = shares.0;
         require!(shares > 0, "shares must be positive");
         let epoch = self.claim(claim_id).epoch;
@@ -531,9 +592,8 @@ impl BalaBlu {
         U128(out)
     }
 
-    /// Collect winnings from a settled epoch.
-    pub fn redeem(&mut self, claim_id: u64, epoch: u32, currency: Currency) -> U128 {
-        let who = env::predecessor_account_id();
+    fn do_redeem(&mut self, who: &AccountId, claim_id: u64, epoch: u32, currency: Currency) -> U128 {
+        let who = who.clone();
         let key = (claim_id, epoch, currency.tag());
         let bps = {
             let m = self.markets.get(&key).unwrap_or_else(|| env::panic_str("no market"));
@@ -871,7 +931,8 @@ impl BalaBlu {
                 practice_seed: U128(10_000 * ONE),
                 usdc_seed: U128(0),
                 keeper: owner.clone(),
-                council: owner,
+                council: owner.clone(),
+                relayer: owner,
                 jury_models: vec![
                     "Qwen/Qwen3.8-27B".into(),
                     "deepseek-ai/DeepSeek-V4.1-Flash-1017".into(),
