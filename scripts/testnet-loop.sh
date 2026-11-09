@@ -40,7 +40,7 @@ done
 echo "== 3. deploy BalaBlu (initialise only if the state is old or missing)"
 "$NEAR" contract deploy "$APP" use-file "$WASM_DIR/balablu.wasm" without-init-call \
   network-config $NET sign-with-legacy-keychain send 2>&1 | grep -E "Error|error" || true
-if ! view "$APP" owner '{}' | grep -q "\"$OWNER\""; then
+if [ -n "${REINIT:-}" ] || ! view "$APP" owner '{}' | grep -q "\"$OWNER\""; then
   echo "-- old/missing state or other owner: reinit"
   tx "$APP" reinit "{\"owner\":\"$OWNER\",\"usdc_token\":\"$USDC\",\"max_bet_usdc\":\"2000000\"}" "$APP"
 fi
@@ -69,15 +69,8 @@ echo "-- cap check (3 USDC must fail):"
 tx "$APP" buy "{\"claim_id\":$ID,\"side\":\"Fact\",\"currency\":\"Usdc\",\"amount\":\"3000000\"}" "$PLAYER" || true
 view "$APP" get_market "{\"claim_id\":$ID,\"currency\":\"Usdc\"}"
 
-echo "== 7. settle (owner stand-in for the jury until Day 3) and redeem"
-EP=$(view "$APP" get_claim "{\"claim_id\":$ID}" | python -c "import sys,json;print(json.load(sys.stdin)['epoch'])")
-tx "$APP" settle_epoch "{\"claim_id\":$ID,\"outcome\":\"Balablu\"}" "$OWNER"
-tx "$APP" redeem "{\"claim_id\":$ID,\"epoch\":$EP,\"currency\":\"Usdc\"}" "$PLAYER"
-tx "$APP" redeem "{\"claim_id\":$ID,\"epoch\":$EP,\"currency\":\"Points\"}" "$PLAYER"
-echo "-- double redeem (must fail):"
-tx "$APP" redeem "{\"claim_id\":$ID,\"epoch\":$EP,\"currency\":\"Usdc\"}" "$PLAYER" || true
-view "$APP" get_wallet "{\"account_id\":\"$PLAYER\"}"
-view "$APP" get_market "{\"claim_id\":$ID,\"currency\":\"Points\"}"
+echo "== 7. nobody (not even the owner) can settle by hand: only the AI jury can"
+echo "   run: node workers/demo-audit.mjs   (audit, jury, appeal, panel, finalize, redeem)"
 
 echo "== 8. cash out 1 USDC back to the player's own wallet"
 tx "$APP" withdraw_usdc '{"amount":"1000000"}' "$PLAYER" '1 yoctoNEAR'

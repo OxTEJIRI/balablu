@@ -1,0 +1,13 @@
+{
+  "name": "balablu-workers",
+  "private": true,
+  "type": "module",
+  "description": "BalaBlu workers: jury runner, keeper, page writer, Ask Blu. No dependencies (Node 20+).",
+  "scripts": {
+    "jury": "node jury.mjs",
+    "keeper": "node keeper.mjs",
+    "writer": "node writer.mjs",
+    "askblu": "node askblu.mjs",
+    "demo:audit": "node demo-audit.mjs"
+  }
+}

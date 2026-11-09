@@ -1,3 +1,5 @@
 * text=auto eol=lf
 # signed AI replies: bytes must never change
 contract/fixtures/** binary
+# signed AI replies and attestation reports: bytes must never change
+data/** binary
