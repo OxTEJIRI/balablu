@@ -4,6 +4,20 @@ const USDC_NEAR = 'nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad20
 
 let tokens = { at: 0, list: [] };
 
+// A dry quote only prices a swap and moves no money, but 1Click still wants a
+// well-formed refund address for the coin's chain. Placeholders, never funded.
+const PLACEHOLDER = {
+  sol: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM',
+  eth: '0x1111111111111111111111111111111111111111',
+  base: '0x1111111111111111111111111111111111111111',
+  arb: '0x1111111111111111111111111111111111111111',
+  btc: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+  near: 'near',
+};
+// Intents rejects quotes to a recipient account that does not exist. Until the
+// mainnet app account is created, price dry quotes against the NEAR system account.
+const QUOTE_RECIPIENT = process.env.QUOTE_RECIPIENT || 'near';
+
 export default async function handler(req, res) {
   try {
     if (Date.now() - tokens.at > 10 * 60_000) {
@@ -12,8 +26,8 @@ export default async function handler(req, res) {
     }
     const q = req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams);
     if (!q.from) {
-      const pick = ['SOL', 'ETH', 'BTC', 'USDC', 'NEAR', 'USDT'];
-      const list = tokens.list.filter((t) => pick.includes(t.symbol)).map((t) => ({ assetId: t.assetId, symbol: t.symbol, chain: t.blockchain, decimals: t.decimals, price: t.price }));
+      const pick = ['SOL', 'ETH', 'BTC', 'USDC'];
+      const list = tokens.list.filter((t) => pick.includes(t.symbol) && ['sol', 'eth', 'btc', 'base', 'arb'].includes(t.blockchain)).map((t) => ({ assetId: t.assetId, symbol: t.symbol, chain: t.blockchain, decimals: t.decimals, price: t.price }));
       res.setHeader('Cache-Control', 's-maxage=300');
       return res.status(200).json({ tokens: list });
     }
@@ -29,9 +43,9 @@ export default async function handler(req, res) {
       depositType: 'ORIGIN_CHAIN',
       destinationAsset: USDC_NEAR,
       amount: amount.toString(),
-      refundTo: String(q.refundTo || ''),
+      refundTo: String(q.refundTo || PLACEHOLDER[t.blockchain] || PLACEHOLDER[t.chain] || PLACEHOLDER.eth),
       refundType: 'ORIGIN_CHAIN',
-      recipient: String(q.recipient || 'balabluapp.near'),
+      recipient: QUOTE_RECIPIENT,
       recipientType: 'DESTINATION_CHAIN',
       deadline: new Date(Date.now() + 30 * 60_000).toISOString(),
     };

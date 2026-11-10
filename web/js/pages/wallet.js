@@ -54,7 +54,7 @@ function AnyCoin({ acct }) {
   const [err, setErr] = useState(null);
   useEffect(() => {
     fetch('/api/quote').then((r) => r.json()).then((j) => {
-      const want = [['SOL', 'sol'], ['ETH', 'eth'], ['BTC', 'btc'], ['USDC', 'base'], ['NEAR', 'near'], ['USDT', 'tron']];
+      const want = [['SOL', 'sol'], ['ETH', 'eth'], ['BTC', 'btc'], ['USDC', 'base'], ['USDC', 'sol']];
       const list = want.map(([s, ch]) => j.tokens.find((t) => t.symbol === s && t.chain === ch) || j.tokens.find((t) => t.symbol === s)).filter(Boolean);
       setTokens(list);
       setFrom(list[0]?.assetId);
@@ -74,7 +74,7 @@ function AnyCoin({ acct }) {
   const tok = tokens.find((t) => t.assetId === from);
   return html`<div class="card stack" style="gap:14px">
     <b style="font-size:20px">Pay with any coin</b>
-    <span class="muted">Send from the wallet you already use (Solana, Ethereum, Bitcoin, Base…). NEAR Intents swaps it to USDC on NEAR in about 30 seconds. No bridge, no gas coin needed.</span>
+    <span class="muted">Send from the wallet you already use (Solana, Ethereum, Bitcoin, Base…). NEAR Intents swaps it to USDC on NEAR, usually in under a minute (Bitcoin takes longer). No bridge, no gas coin needed.</span>
     <span class="kicker">1 · Pick your coin</span>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
       ${tokens.map((t) => html`<button class="btn" style=${from === t.assetId ? 'background:var(--lime-2);border-width:3px' : ''} aria-pressed=${from === t.assetId} onClick=${() => setFrom(t.assetId)}>${t.symbol}<span class="muted" style="font-size:12px">${t.chain}</span></button>`)}
@@ -88,7 +88,7 @@ function AnyCoin({ acct }) {
     <div class="payout">
       ${err ? html`<span>${err}</span>` : !quote ? html`<span class="muted">Getting a live quote from NEAR Intents…</span>` : html`
         You send <b class="mono">${quote.amountInFormatted} ${tok?.symbol}</b> (≈ $${Number(quote.amountInUsd).toFixed(2)})<br/>
-        You get <b class="mono hl">${Number(quote.amountOutFormatted).toFixed(2)} USDC</b> in about ${quote.timeEstimate} s`}
+        You get <b class="mono hl">${Number(quote.amountOutFormatted).toFixed(2)} USDC</b> in about ${quote.timeEstimate > 90 ? `${Math.round(quote.timeEstimate / 60)} min` : `${quote.timeEstimate} s`}`}
     </div>
     <span class="muted" style="font-size:13px">${NETWORK === 'testnet' ? 'Live mainnet quote. NEAR Intents has no testnet, so real deposits open on the mainnet app.' : 'Your deposit address appears after you confirm.'}</span>
   </div>`;
