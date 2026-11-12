@@ -1,0 +1,7 @@
+{
+  "text": "deepseek-ai/DeepSeek-V4.1-Flash-1017:679ece4debe99b71e90e1966b0e15118423d6f3cf53d56e3a3f7b7a235ef1777:04d38c436a7250ae4ca16fd69d078e12948dc194132f5675a7ee0fd2049b0246",
+  "signature": "4c66e29fb7c28e91c78c1ba55e019fd68f337791f93f0b4df9cbf881bf9e65003ead3d33200be1a74897df1d45757f17e6845a886d98493415cb138ac0cf490b",
+  "signing_address": "236f5a6b91dd47dc3b7b36e43d4eb531a042ffb8f8fbf3a1555b78cef4fdda4c",
+  "signing_algo": "ed25519",
+  "signature_kind": "provider_tee"
+}
