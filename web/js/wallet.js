@@ -60,7 +60,9 @@ export async function signOut() {
   emit('wallet', null);
 }
 
-const fc = (methodName, args, gas = '100000000000000', deposit = '0') => ({ type: 'FunctionCall', params: { methodName, args, gas, deposit } });
+// Wallet Selector v10 takes near-api-js ("NAJ") style actions: { functionCall: { methodName, args, gas, deposit } }.
+// args stay a plain object (the library converts it) and gas/deposit are BigInt.
+const fc = (methodName, args, gas = '100000000000000', deposit = '0') => ({ functionCall: { methodName, args, gas: BigInt(gas), deposit: BigInt(deposit) } });
 
 /** One call on a contract (default: BalaBlu). */
 export async function call(method, args, { receiver = CONTRACT, deposit = '0', gas = '100000000000000' } = {}) {
