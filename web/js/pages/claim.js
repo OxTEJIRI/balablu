@@ -75,6 +75,7 @@ export function Claim({ id }) {
           ${card.usdc_odds_bps != null && html`<span class="chip white">$${fmt(card.volume_usdc)} real money</span>`}
           ${card.last_outcome && html`<${Verdict} outcome=${card.last_outcome}/>`}
           <span class="chip aqua">Round ${c.epoch + 1}</span>
+          <a class="btn small lime" href="#bet" onClick=${(e) => { e.preventDefault(); document.getElementById('bet')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>Make your call ↓</a>
         </div>
         <div class="card"><${OddsBar} bps=${card.odds_bps}/></div>
         <div class="card stack" style="gap:8px">
@@ -104,7 +105,7 @@ export function Claim({ id }) {
           </a>`)}
         </div>
       </div>
-      <aside class="card pop stack" style="flex:1 1 340px;min-width:0;padding:22px">
+      <aside id="bet" class="card pop stack" style="flex:1 1 340px;min-width:0;padding:22px;scroll-margin-top:90px">
         <${BetPanel} card=${card} initialSide=${duel === 'Balablu' ? 'Fact' : duel === 'Fact' ? 'Balablu' : 'Fact'} onDone=${load}/>
         <div class="row" style="border-top:1px solid var(--line);padding-top:14px;gap:8px">
           <button class="btn small" onClick=${() => copyDuel('Fact')}>Duel a friend</button>
