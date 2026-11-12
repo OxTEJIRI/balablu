@@ -1166,7 +1166,30 @@ impl BalaBlu {
                 self.credit(&owner, Currency::Usdc, a.bond.0);
             }
         }
-        self.credit(&owner, Currency::Usdc, a.fee.0);
+        // Evidence rewards: half of a requested audit's fee is shared equally between
+        // the distinct accounts whose sources the jury read (each account counts once,
+        // so stuffing many sources from one account earns nothing extra). The rest
+        // goes to the treasury.
+        let mut payees: Vec<AccountId> = Vec::new();
+        for eid in &a.evidence_ids {
+            if let Some(e) = self.evidence.get(*eid as u32) {
+                if !payees.contains(&e.by) {
+                    payees.push(e.by.clone());
+                }
+            }
+        }
+        let mut paid = 0u128;
+        let reward_pool = a.fee.0 / 2;
+        if reward_pool > 0 && !payees.is_empty() {
+            let each = reward_pool / payees.len() as u128;
+            if each > 0 {
+                for p in &payees {
+                    self.credit(p, Currency::Usdc, each);
+                    paid += each;
+                }
+            }
+        }
+        self.credit(&owner, Currency::Usdc, a.fee.0 - paid);
         {
             let au = self.audits.get_mut(audit_id as u32).unwrap();
             au.status = AuditStatus::Final;

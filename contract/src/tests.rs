@@ -830,3 +830,38 @@ fn cards_show_odds_and_last_verdict() {
     assert_eq!(cards[0].last_audit, Some(audit));
     assert!((cards[0].odds_bps as i64 - 1_000).abs() <= 1);
 }
+
+// ---------------- evidence rewards ----------------
+
+#[test]
+fn evidence_submitters_share_half_the_audit_fee() {
+    let mut c = setup(0);
+    let id = new_claim(&mut c, 5_000, 0);
+    // ada adds two sources (paid once), kemi adds one
+    ctx(ada(), EVIDENCE_DEPOSIT.as_yoctonear(), 1_000 * MIN);
+    c.add_evidence(id, "https://a.org".into(), "one".into());
+    c.add_evidence(id, "https://b.org".into(), "two".into());
+    ctx(kemi(), EVIDENCE_DEPOSIT.as_yoctonear(), 1_000 * MIN);
+    c.add_evidence(id, "https://c.org".into(), "three".into());
+    let req = acc("req.testnet");
+    deposit(&mut c, req.clone(), ONE);
+    call_as(req.clone(), 0);
+    let audit = c.request_audit(id); // fee: 0.5 USDC
+    c.apply_round(audit, votes(1, &[Verdict::Fact, Verdict::Fact, Verdict::Fact]));
+    ctx(req, 0, 1_000 * MIN + 11 * MIN);
+    c.finalize(audit);
+    // reward pool 0.25 USDC / 2 accounts = 0.125 each; treasury keeps the other 0.25
+    assert_eq!(usdc_of(&c, ada()), ONE / 8);
+    assert_eq!(usdc_of(&c, kemi()), ONE / 8);
+    assert_eq!(usdc_of(&c, owner()), ONE / 4);
+}
+
+#[test]
+fn no_evidence_means_the_treasury_keeps_the_whole_fee() {
+    let mut c = setup(0);
+    let (_, audit, _, _) = audited_claim(&mut c);
+    c.apply_round(audit, votes(1, &[Verdict::Fact, Verdict::Fact, Verdict::Fact]));
+    ctx(kemi(), 0, 1_000 * MIN + 11 * MIN);
+    c.finalize(audit);
+    assert_eq!(usdc_of(&c, owner()), ONE / 2);
+}
