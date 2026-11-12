@@ -42,7 +42,14 @@ function analyse(r) {
     if (payout > 0n) return { kind: 'won', chip: 'YOU WON', side, payout, spent, line: `${ruled}. You called ${side}, so you won ${money(r, payout)}${payout > spent ? ` (${money(r, payout - spent)} profit)` : ''}.` };
     return { kind: 'lost', chip: 'YOU LOST', side, payout, spent, line: `${ruled}. You called ${side}, so this bet lost. Nothing to collect, but you can clear it.` };
   }
-  if (r.card.status !== 'Open') return { kind: 'jury', chip: 'JURY AT WORK', side, spent, ifRight, line: `You called ${side}. The jury is deciding right now. You will see the result here in a minute.` };
+  if (r.card.status !== 'Open') {
+    const au = r.audit;
+    if (au && (au.status === 'AppealWindow' || au.status === 'CouncilWindow') && au.outcome) {
+      const ruled = au.outcome === 'Fact' ? 'FACT' : au.outcome === 'Balablu' ? 'BALABLU' : 'a split';
+      return { kind: 'jury', chip: 'VERDICT IN', side, spent, ifRight, line: `You called ${side}. The jury ruled ${ruled}. There is a short window for appeals, then the result is final and you can collect here.` };
+    }
+    return { kind: 'jury', chip: 'JURY AT WORK', side, spent, ifRight, line: `You called ${side}. The jury is deciding right now. You will see the result here in a minute.` };
+  }
   return { kind: 'open', chip: 'OPEN', side, spent, ifRight, line: `You called ${side}. If you are right you get ${money(r, ifRight)}. The jury rules at a surprise time.` };
 }
 
@@ -67,6 +74,10 @@ export function Me() {
     // current market for open bets, so we can offer "cash out early" with a real number
     await Promise.all(rows.filter((r) => !r.resolved && r.card.status === 'Open').map(async (r) => {
       r.market = await view('get_market', { claim_id: r.claim_id, currency: r.currency }).catch(() => null);
+    }));
+    // bets on a claim the jury has ruled on but that is not final yet: fetch the audit to say so
+    await Promise.all(rows.filter((r) => !r.resolved && r.card.status !== 'Open' && r.card.claim.active_audit != null).map(async (r) => {
+      r.audit = await view('get_audit', { audit_id: r.card.claim.active_audit }).catch(() => null);
     }));
     setData({ rows, gw, ww });
   };
