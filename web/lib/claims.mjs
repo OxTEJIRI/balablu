@@ -2,7 +2,7 @@
 import { view } from './near.mjs';
 
 /** Our own test claims on the live contract: not real content. */
-export const HIDDEN = new Set([16, 17, 18]);
+export const HIDDEN = new Set([14, 16, 17, 18]);
 export const SITE = 'https://balabluapp.vercel.app';
 
 let cache = { at: 0, list: [] };

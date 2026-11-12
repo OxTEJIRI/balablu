@@ -41,7 +41,6 @@ const CLAIMS = [
   ['Honey', 'Honey found in ancient Egyptian tombs was still edible.', 'FACT if archaeologists have found honey thousands of years old in Egyptian tombs that was still edible. BALABLU if not.', 7200, 0, false,
     [['https://www.smithsonianmag.com/science-nature/the-science-behind-honeys-eternal-shelf-life-1218690/', 'Archaeologists excavating ancient Egyptian tombs have often found pots of honey, thousands of years old, still preserved and edible.']]],
   ['Honey', 'Bees visit about two million flowers to make one pound of honey.', 'FACT if beekeeping bodies estimate around two million flower visits per pound of honey. BALABLU if the estimate is far off.', 6100, 0, false, []],
-  ['Lagos', 'Lagos has more than 20 million residents.', 'FACT if a credible current estimate puts the Lagos metropolitan population above 20 million. BALABLU if credible estimates are below.', 5800, 0, false, []],
   ['Eiffel Tower', 'The Eiffel Tower is taller than 300 metres.', 'FACT if the Eiffel Tower is more than 300 m tall including its antennas. BALABLU if not.', 9000, 0, false,
     [['https://www.toureiffel.paris/en/the-monument/key-figures', 'The Eiffel Tower is 330 metres tall, including its antennas.']]],
 ];

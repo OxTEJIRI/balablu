@@ -18,7 +18,7 @@ export async function view(method, args = {}) {
 }
 
 /** Test claims from our own attack-suite runs on the live contract: not real content. */
-const HIDDEN = new Set([16, 17, 18]);
+const HIDDEN = new Set([14, 16, 17, 18]); // 14 = an off-topic claim we removed; 16-18 = attack-test claims
 
 let cardsCache = { at: 0, promise: null };
 /** All claims with odds (cached a few seconds). */
@@ -74,12 +74,38 @@ export async function ensurePoints() {
   return view('get_wallet', { account_id: guestId() });
 }
 
+// ---------- a small log of what you did on this device (for "My bets") ----------
+const LOG_KEY = 'balablu.log';
+const HIST_KEY = 'balablu.history';
+function readJSON(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
+function writeJSON(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode */ } }
+/** Remember a bet so My bets can show a receipt even after the page is closed. */
+export function recordBet(entry) {
+  const log = readJSON(LOG_KEY, []);
+  log.unshift({ ts: Date.now(), ...entry });
+  writeJSON(LOG_KEY, log.slice(0, 60));
+}
+export const betLog = () => readJSON(LOG_KEY, []);
+/** Remember a collected result (the chain forgets a position once it is paid out). */
+export function recordResult(entry) {
+  const h = readJSON(HIST_KEY, []);
+  h.unshift({ ts: Date.now(), ...entry });
+  writeJSON(HIST_KEY, h.slice(0, 100));
+}
+export const resultHistory = () => readJSON(HIST_KEY, []);
+
+/** Every bet a guest or wallet account holds, in one call. */
+export const getPositions = (account_id) => view('get_positions', { account_id });
+
 export function friendly(msg = '') {
   if (/paused/.test(msg)) return 'Betting is paused: the jury is checking this claim right now.';
   if (/not enough balance/.test(msg)) return "You don't have enough for that bet.";
   if (/per-bet cap/.test(msg)) return 'Max $2 a bet while BalaBlu is new.';
   if (/odds moved/.test(msg)) return 'The odds just moved. Try again.';
   if (/slow down/.test(msg)) return 'Whoa, slow down a little.';
+  if (/User rejected|rejected|denied|cancel/i.test(msg)) return 'You cancelled it in your wallet, so nothing was sent.';
+  if (/nothing to redeem/.test(msg)) return 'That bet was already collected.';
+  if (/not settled/.test(msg)) return 'The jury has not ruled on this claim yet.';
   return msg.replace(/^Smart contract panicked: /, '') || 'Something went wrong.';
 }
 

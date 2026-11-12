@@ -215,7 +215,7 @@ mod tests {
         assert_eq!(find_tag(b"x BALABLU-AUDIT:42-r1:ab12. y", AUDIT_PREFIX).as_deref(), Some("BALABLU-AUDIT:42-r1:ab12"));
         assert_eq!(find_tag(b"BALABLU-AUDIT:42", AUDIT_PREFIX), None);
         assert_eq!(slug("NEAR Protocol"), "near-protocol");
-        assert_eq!(slug("  Lagos, Nigeria!  "), "lagos-nigeria");
+        assert_eq!(slug("  Eiffel Tower!!  "), "eiffel-tower");
     }
 
     #[test]

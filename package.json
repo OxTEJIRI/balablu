@@ -1,0 +1,18 @@
+{
+  "name": "balablu",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BalaBlu: the encyclopedia where every fact has odds. No dependencies: Node 20+ runs everything except the contract tests (Rust).",
+  "license": "MIT",
+  "repository": "https://github.com/OxTEJIRI/balablu",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node web/dev.mjs",
+    "verify": "node scripts/verify-audit.mjs",
+    "test:contract": "cd contract && cargo test --workspace",
+    "test:attacks": "node workers/attack-suite.mjs",
+    "status": "node -e \"fetch('https://balabluapp.vercel.app/api/status').then(r=>r.json()).then(j=>console.log(JSON.stringify(j,null,2)))\""
+  }
+}

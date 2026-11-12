@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import { html, Blu, Loading, Empty, toast, emit, pct, fmt } from '../ui.js';
-import { getCards, guest, ensurePoints, guestId, view, friendly } from '../data.js';
+import { getCards, guest, ensurePoints, guestId, view, friendly, recordBet } from '../data.js';
 
 const STAKE = 50;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -39,7 +39,8 @@ export function Play() {
     setBusy(true);
     try {
       await ensurePoints();
-      await guest('buy', { claim_id: card.claim.id, side, amount: String(STAKE * 1e6) });
+      const r = await guest('buy', { claim_id: card.claim.id, side, amount: String(STAKE * 1e6) });
+      recordBet({ claim_id: card.claim.id, claim: card.claim.text, page: card.claim.page, side, amount: STAKE, currency: 'Points', tx: r.tx || null, who: guestId() });
       const w = await view('get_wallet', { account_id: guestId() });
       setPoints(w.points);
       setState((s) => ({ ...s, picks: [...s.picks.slice(0, s.i), side] }));
@@ -68,7 +69,7 @@ export function Play() {
           <${Blu} face="stars" size=${110} label="Blu, happy"/>
           <b style="font-size:28px">Done for today!</b>
           <p class="muted" style="margin:0">You made ${state.picks.filter(Boolean).length} calls. The jury settles them at surprise times; collect winnings on your Me page.</p>
-          <div class="row" style="justify-content:center"><a class="btn lime" href="/me">See my calls</a><a class="btn" href="/wiki">Read the encyclopedia</a></div>
+          <div class="row" style="justify-content:center"><a class="btn lime" href="/bets">See my bets</a><a class="btn" href="/wiki">Read the encyclopedia</a></div>
         </div>`
       : html`<div class="playcard">
           <div class="back"></div>
@@ -80,7 +81,7 @@ export function Play() {
                 <span>You said <b class="tag" style=${`font-size:13px;background:${pick === 'Fact' ? 'var(--lime)' : 'var(--coral)'}`}>${pick === 'Fact' ? 'FACT' : 'BALABLU'}</b></span>
                 <div class="row" style="gap:8px;align-items:baseline"><span class="mono" style="font-size:42px;font-weight:700">${agree}%</span><span class="muted">of bettors agree</span></div>
                 <div class="bar"><span style=${`width:${pct(card.odds_bps)}%`}></span></div>
-                <span class="muted" style="font-size:13px">The jury settles it at a surprise time. <a href=${`/claim/${card.claim.id}`}>Claim page</a></span>
+                <span style="font-size:14px">✓ Your bet is saved. Find it any time in <a href="/bets">My bets</a>. The jury settles it at a surprise time. <a href=${`/claim/${card.claim.id}`}>Claim page</a></span>
               </div>`
             : html`<span class="muted" style="font-size:15px;margin-top:16px">Fact, or BalaBlu? Each call uses ${STAKE} free practice points.</span>`}
           </div>

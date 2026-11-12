@@ -1,8 +1,8 @@
 import { h, render } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
-import { view, guest, ensurePoints, guestId, pct, fmt, friendly } from './data.js';
-import { ONE } from './config.js';
+import { view, guest, ensurePoints, guestId, pct, fmt, friendly, recordBet } from './data.js';
+import { ONE, EXPLORER } from './config.js';
 import * as wallet from './wallet.js';
 
 export const html = htm.bind(h);
@@ -134,14 +134,18 @@ export function BetPanel({ card, initialSide = 'Fact', onDone, compact = false }
   const [amount, setAmount] = useState(200);
   const [quote, setQuote] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState(null);
+  const [receipt, setReceipt] = useState(null);
+  const [error, setError] = useState(null);
   const [acct, setAcct] = useState(wallet.account());
   useEvent('wallet', () => setAcct(wallet.account()));
   const paused = card.status !== 'Open';
   const currency = mode === 'practice' ? 'Points' : 'Usdc';
   const units = Math.round(amount * ONE);
   const odds = mode === 'real' && hasUsdc ? card.usdc_odds_bps : card.points_odds_bps;
+  const word = side === 'Fact' ? 'FACT' : 'BALABLU';
 
-  useEffect(() => { setAmount(mode === 'practice' ? 200 : 1); }, [mode]);
+  useEffect(() => { setAmount(mode === 'practice' ? 200 : 1); setError(null); }, [mode]);
   useEffect(() => {
     let live = true;
     setQuote(null);
@@ -151,26 +155,45 @@ export function BetPanel({ card, initialSide = 'Fact', onDone, compact = false }
   }, [side, amount, mode]);
 
   async function go() {
+    setError(null);
     setBusy(true);
+    setStage(mode === 'real' ? 'Waiting for your wallet. Approve the pop-up to place the bet…' : 'Placing your bet…');
     try {
+      const min = quote ? String(Math.floor(Number(quote.shares) * 0.97)) : null;
+      let tx = null;
       if (mode === 'practice') {
         await ensurePoints();
-        const min = quote ? String(Math.floor(Number(quote.shares) * 0.97)) : null;
-        await guest('buy', { claim_id: c.id, side, amount: String(units), min_shares: min });
-        toast(`Called it ${side === 'Fact' ? 'FACT' : 'BALABLU'}! ${amount} pts in.`);
+        const r = await guest('buy', { claim_id: c.id, side, amount: String(units), min_shares: min });
+        tx = r.tx || null;
       } else {
         if (!acct) { await wallet.signIn(); return; }
-        const min = quote ? String(Math.floor(Number(quote.shares) * 0.97)) : null;
-        await wallet.call('buy', { claim_id: c.id, side, currency: 'Usdc', amount: String(units), min_shares: min });
-        toast(`Called it ${side === 'Fact' ? 'FACT' : 'BALABLU'} with $${amount}.`);
+        const r = await wallet.call('buy', { claim_id: c.id, side, currency: 'Usdc', amount: String(units), min_shares: min });
+        tx = (r && r.transaction && r.transaction.hash) || (r && r.transaction_outcome && r.transaction_outcome.id) || null;
       }
+      recordBet({ claim_id: c.id, claim: c.text, page: c.page, side, amount, currency, tx, who: mode === 'real' ? acct : guestId() });
       emit('bet', { claim: c.id });
-      onDone && onDone();
+      setReceipt({ side: word, amount, unit: mode === 'practice' ? 'pts' : 'USDC', win: quote ? fmt(quote.payout_if_right) : null, tx, mode });
     } catch (e) {
-      toast(friendly(e.message), true);
+      setError(friendly(e.message));
     } finally {
       setBusy(false);
+      setStage(null);
     }
+  }
+
+  if (receipt) {
+    const money = (n) => (receipt.mode === 'real' ? `$${n}` : `${n} pts`);
+    return html`<div class="stack" role="status">
+      <div class="row" style="gap:10px;flex-wrap:nowrap"><span class="dot big">✓</span><b style="font-size:22px">Your bet is in!</b></div>
+      <div class="payout">You bet <b class="mono">${money(receipt.amount)}</b> that <b>${receipt.side}</b> is right.<br/>
+        ${receipt.win ? html`If the jury agrees, you get <b class="mono hl">${money(receipt.win)}</b>.<br/>` : ''}
+        If it doesn’t, you lose the ${money(receipt.amount)}.</div>
+      <b>What happens next</b>
+      <ol class="next"><li>The odds move as other people bet.</li><li>At a surprise time, three sealed AIs rule on the claim. Betting pauses while they work.</li><li>Your bet then shows <b>Ready to collect</b> in My bets. Press <b>Collect</b> to get your winnings.</li></ol>
+      <div class="row" style="gap:8px"><a class="btn dark" href="/bets" onClick=${() => onDone && onDone()}>See my bets</a>
+        <button class="btn" onClick=${() => setReceipt(null)}>Place another bet</button>
+        ${receipt.tx && html`<a class="btn small" target="_blank" rel="noopener" href=${`${EXPLORER}/txns/${receipt.tx}`}>Receipt on NEAR ↗</a>`}</div>
+    </div>`;
   }
 
   const unit = mode === 'practice' ? 'pts' : 'USDC';
@@ -180,7 +203,8 @@ export function BetPanel({ card, initialSide = 'Fact', onDone, compact = false }
       <button role="radio" aria-checked=${mode === 'practice'} class=${mode === 'practice' ? 'on' : ''} onClick=${() => setMode('practice')}>Practice points</button>
       <button role="radio" aria-checked=${mode === 'real'} class=${mode === 'real' ? 'on' : ''} onClick=${() => setMode('real')}>Real money</button>
     </div>
-    ${!compact && html`<b style="font-size:20px">Is it a fact, or BalaBlu?</b>`}
+    <div class="stack" style="gap:4px"><b style="font-size:20px">Is it a fact, or BalaBlu?</b>
+      <span class="muted" style="font-size:13px"><b>FACT</b> = it’s true. <b>BALABLU</b> = it’s nonsense.</span></div>
     <div class="callpair">
       <button class=${'call fact' + (side === 'Fact' ? ' picked' : '')} aria-pressed=${side === 'Fact'} onClick=${() => setSide('Fact')}>FACT<small>${pct(odds)}%</small></button>
       <button class=${'call bla' + (side === 'Balablu' ? ' picked' : '')} aria-pressed=${side === 'Balablu'} onClick=${() => setSide('Balablu')}>BALABLU<small>${100 - pct(odds)}%</small></button>
@@ -192,11 +216,13 @@ export function BetPanel({ card, initialSide = 'Fact', onDone, compact = false }
         <div class="amounts">
           ${(mode === 'practice' ? PRACTICE : REAL).map((a) => html`<button class=${amount === a ? 'on' : ''} onClick=${() => setAmount(a)}>${mode === 'real' ? '$' : ''}${a}</button>`)}
         </div>
-        <div class="payout">Bet <b class="mono">${amount} ${unit}</b> on ${side === 'Fact' ? 'FACT' : 'BALABLU'}.<br/>If you’re right, you get <b class="mono hl">${win} ${unit}</b>.</div>
+        <div class="payout">Bet <b class="mono">${amount} ${unit}</b> on ${word}.<br/>If you’re right, you get <b class="mono hl">${win} ${unit}</b>. If you’re wrong, you lose the ${amount} ${unit}.</div>
+        ${error && html`<div class="alertbox" role="alert"><b>✗ That didn’t go through</b><br/>${error}<br/><span style="font-size:13px">Nothing was bet. You can try again.</span></div>`}
+        ${stage && html`<div class="row muted" role="status" style="gap:8px;flex-wrap:nowrap"><${Blu} face="magnifier" size=${28} cls="bob"/>${stage}</div>`}
         <button class="btn dark big" disabled=${busy || paused} onClick=${go}>
-          ${paused ? 'Paused: the jury is working' : busy ? 'Placing your call…' : mode === 'real' && !acct ? 'Connect a wallet to bet' : `Call it ${side === 'Fact' ? 'FACT' : 'BALABLU'}`}
+          ${paused ? 'Paused: the jury is working' : busy ? 'Working…' : mode === 'real' && !acct ? 'Connect a wallet to bet' : `Call it ${word}`}
         </button>
-        <span class="muted" style="font-size:13px;line-height:1.5">${mode === 'practice' ? 'Practice points are free. No wallet needed.' : 'Max $2 a bet while BalaBlu is new. Cash out any time before an audit.'}</span>`}
+        <span class="muted" style="font-size:13px;line-height:1.5">${mode === 'practice' ? 'Practice points are free play money. No wallet needed.' : 'Max $2 a bet while BalaBlu is new. You can cash out early from My bets.'}</span>`}
   </div>`;
 }
 

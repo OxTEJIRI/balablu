@@ -44,7 +44,7 @@ Each claim has a market built on a **fixed-product market maker**, the same simp
 
 *Example from the test run:* with odds at 30% FACT, a $2 bet on BALABLU bought 3.40 shares, so it pays $3.40 if the jury agrees. The contract tells you this before you confirm ("Bet $2, win $3.40 if you're right") and refuses the bet if the odds moved against you in the meantime.
 
-You can also **cash out early** at the current odds, at a small loss from the fee.
+You can also **cash out early** at the current odds (a button in My bets shows what you would get), at a small cost from the fee.
 
 ### Two kinds of money
 
@@ -98,7 +98,7 @@ Half of every requested audit's fee is **shared among the accounts whose sources
 
 ## Verify it yourself
 
-Open any audit and press **Verify it yourself**. Your browser downloads the exact signed request and response files, re-computes their hashes, compares them to the hashes stored on NEAR, and checks each enclave's Ed25519 signature. No trust in BalaBlu is needed. All signed bundles and the enclaves' attestation reports are committed to the repository.
+Open any audit and press **Verify it yourself**. Your browser downloads the exact signed request and response files, re-computes their hashes, compares them to the hashes stored on NEAR, and checks each enclave's Ed25519 signature. No trust in BalaBlu is needed. All signed bundles and the enclaves' attestation reports are committed to the repository, and `node scripts/verify-audit.mjs <audit id>` repeats the whole check from the command line against the chain, with no dependencies.
 
 ## Architecture
 
@@ -160,7 +160,7 @@ Winning shares pay exactly 1 USDC each. The market maker (the account that seeds
 | Ask Blu: questions answered from odds and verdicts; unknown questions become new claims | Ask Blu |
 | Paste any link and Blu proposes claims to bet on | Paste a link |
 | Daily Bla: five claims a day with a streak | Daily Bla |
-| Truth score and badges; watchlist with move alerts | Me |
+| **My bets**: every bet in one place with a plain status (open, jury at work, won, lost), collect winnings, cash out early, history, truth score, badges; watchlist with move alerts | My bets |
 | Duel a friend with a challenge link | claim page |
 | Share cards (PNG) for X | claim and audit pages |
 | Live odds badge and embed for any website | claim page, Embed |

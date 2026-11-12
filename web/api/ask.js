@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   const question = String(b.question || '').trim().slice(0, 300);
   if (question.length < 3) return res.status(400).json({ error: 'ask a question' });
   try {
-    const HIDDEN = new Set([16, 17, 18]); // our own test claims
+    const HIDDEN = new Set([14, 16, 17, 18]); // test claims and one removed off-topic claim
     const cards = (await view('get_cards', { from_index: 0, limit: 100 })).filter((c) => !HIDDEN.has(c.claim.id));
     const q = words(question);
     const ranked = cards

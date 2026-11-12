@@ -1,0 +1,8 @@
+# BalaBlu welcomes people, search engines and AI agents.
+User-agent: *
+Allow: /
+Disallow: /api/guest
+Disallow: /api/suggest
+Disallow: /api/extract
+
+Sitemap: https://balabluapp.vercel.app/sitemap.xml
