@@ -27,7 +27,8 @@ if (!['AwaitingJury', 'AwaitingPanel'].includes(audit.status)) {
 }
 console.log(`Audit #${auditId} round ${prompt.round} · ${prompt.models.length} models\n${prompt.user.split('\n').slice(0, 3).join('\n')}\n`);
 
-const outDir = join('data', 'audits', String(auditId), `r${prompt.round}`);
+const DATA_DIR = process.env.DATA_DIR || 'data';
+const outDir = join(DATA_DIR, 'audits', String(auditId), `r${prompt.round}`);
 mkdirSync(outDir, { recursive: true });
 writeFileSync(join(outDir, 'prompt.json'), JSON.stringify(prompt, null, 2));
 

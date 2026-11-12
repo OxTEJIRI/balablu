@@ -17,11 +17,14 @@ export async function view(method, args = {}) {
   }
 }
 
+/** Test claims from our own attack-suite runs on the live contract: not real content. */
+const HIDDEN = new Set([16, 17, 18]);
+
 let cardsCache = { at: 0, promise: null };
 /** All claims with odds (cached a few seconds). */
 export function getCards(force = false) {
   if (force || !cardsCache.promise || Date.now() - cardsCache.at > 8000) {
-    cardsCache = { at: Date.now(), promise: view('get_cards', { from_index: 0, limit: 100 }) };
+    cardsCache = { at: Date.now(), promise: view('get_cards', { from_index: 0, limit: 100 }).then((l) => l.filter((c) => !HIDDEN.has(c.claim.id))) };
     cardsCache.promise.catch(() => (cardsCache.promise = null));
   }
   return cardsCache.promise;

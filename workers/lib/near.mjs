@@ -45,7 +45,7 @@ export function call(method, args, signer, { contract = CONTRACT, deposit = '0 N
   const log = strip(r.stderr);
   const tx = log.match(/Transaction ID:\s*(\S+)/)?.[1];
   const ok = /succeeded/.test(log) && r.status === 0;
-  const err = log.match(/Smart contract panicked: [^"\n)]+/)?.[0] || log.match(/Error:[^\n]*\n[^\n]*/)?.[0];
+  const err = log.match(/Smart contract panicked: [^"\n)]+/)?.[0] || `${r.error ? `spawn: ${r.error.message} ` : ''}${log.replace(/\s+/g, ' ').trim().slice(-350)}`;
   const value = strip(r.stdout).trim() || null;
   return { ok, tx, error: ok ? null : (err || log.slice(-600)), value };
 }
