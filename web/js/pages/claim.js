@@ -2,6 +2,7 @@ import { useState, useEffect } from 'preact/hooks';
 import { html, Blu, OddsBar, BetPanel, Loading, Empty, Verdict, useEvent, toast, pct, fmt } from '../ui.js';
 import { getCards, view, slug, friendly } from '../data.js';
 import * as wallet from '../wallet.js';
+import { ShareSheet, EmbedSheet } from '../share.js';
 
 const watched = () => { try { return JSON.parse(localStorage.getItem('balablu.watch') || '[]'); } catch { return []; } };
 const setWatched = (l) => { try { localStorage.setItem('balablu.watch', JSON.stringify(l)); } catch { /* ignore */ } };
@@ -18,6 +19,7 @@ export function Claim({ id }) {
   const [audits, setAudits] = useState([]);
   const [watch, setWatch] = useState(watched().includes(id));
   const [adding, setAdding] = useState(false);
+  const [sheet, setSheet] = useState(null);
   const duel = new URLSearchParams(location.search).get('duel');
 
   const load = async () => {
@@ -41,6 +43,10 @@ export function Claim({ id }) {
     const next = l.includes(id) ? l.filter((x) => x !== id) : [...l, id];
     setWatched(next);
     setWatch(next.includes(id));
+    try { // start counting moves from now
+      const seen = JSON.parse(localStorage.getItem('balablu.seen') || '{}'); seen[id] = card.odds_bps; localStorage.setItem('balablu.seen', JSON.stringify(seen));
+      const v = JSON.parse(localStorage.getItem('balablu.seenv') || '{}'); if (card.last_audit != null) v[id] = card.last_audit; localStorage.setItem('balablu.seenv', JSON.stringify(v));
+    } catch { /* ignore */ }
     toast(next.includes(id) ? 'Watching. Blu will flag moves on your Me page.' : 'Stopped watching.');
   }
   async function copyDuel(side) {
@@ -102,12 +108,15 @@ export function Claim({ id }) {
         <${BetPanel} card=${card} initialSide=${duel === 'Balablu' ? 'Fact' : duel === 'Fact' ? 'Balablu' : 'Fact'} onDone=${load}/>
         <div class="row" style="border-top:1px solid var(--line);padding-top:14px;gap:8px">
           <button class="btn small" onClick=${() => copyDuel('Fact')}>Duel a friend</button>
-          <a class="btn small" target="_blank" rel="noopener" href=${`https://x.com/intent/post?text=${encodeURIComponent(shareText(card))}&url=${encodeURIComponent(url)}`}>Share on X</a>
+          <button class="btn small" onClick=${() => setSheet('share')}>Share card</button>
+          <button class="btn small" onClick=${() => setSheet('embed')}>Embed</button>
           <button class="btn small" aria-pressed=${watch} onClick=${toggleWatch}>${watch ? '★ Watching' : '☆ Watch'}</button>
           ${card.status === 'Open' && html`<button class="btn small" onClick=${requestAudit} title="0.5 USDC, needs a wallet">Request an audit</button>`}
         </div>
       </aside>
     </div>
+    ${sheet === 'share' && html`<${ShareSheet} card=${card} onClose=${() => setSheet(null)}/>`}
+    ${sheet === 'embed' && html`<${EmbedSheet} card=${card} onClose=${() => setSheet(null)}/>`}
   </div>`;
 }
 

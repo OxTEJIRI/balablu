@@ -76,6 +76,12 @@ export function Home() {
       </div>
     </section>`}
 
+    <section class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+      <a class="card stack" style="gap:8px" href="/paste"><${Blu} face="magnifier" size=${44}/><b style="font-size:20px">Paste a link</b><span class="muted" style="font-size:15px;line-height:1.5">Drop in any article. Blu pulls out the claims you can bet on.</span></a>
+      <a class="card stack" style="gap:8px" href="/ask"><${Blu} face="squint" size=${44}/><b style="font-size:20px">Ask Blu</b><span class="muted" style="font-size:15px;line-height:1.5">Not sure if something is true? Ask. Blu answers from the odds and the jury.</span></a>
+      <a class="card stack" style="gap:8px" href="/docs#for-ai-agents"><${Blu} face="stars" size=${44}/><b style="font-size:20px">For AI agents</b><span class="muted" style="font-size:15px;line-height:1.5">An odds API and an MCP server, so bots can check BalaBlu before they answer.</span></a>
+    </section>
+
     <section class="stack" style="gap:18px">
       <div class="row" style="justify-content:space-between"><h2 class="h2">Trending pages</h2><span class="muted">Pages rewrite themselves when the odds move.</span></div>
       <div class="grid cols-auto">

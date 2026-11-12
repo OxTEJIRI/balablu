@@ -1,0 +1,19 @@
+# BalaBlu
+
+> BalaBlu is an encyclopedia where every fact has odds. People call a claim FACT or BALABLU (nonsense) with practice points or a few USDC. A jury of three AI models running in sealed NEAR AI enclaves settles claims, and a NEAR smart contract verifies the enclave signatures before paying anyone. Currently a testnet release.
+
+## For AI agents
+- Odds API: GET https://balabluapp.vercel.app/api/v1/odds?q=<question or statement>   (best-matching claims, live odds, jury verdict, rule, sources, audit link)
+- One claim: GET https://balabluapp.vercel.app/api/v1/odds?id=<claim id>
+- MCP server (Streamable HTTP): https://balabluapp.vercel.app/api/mcp   tools: check_claim, get_claim, list_claims
+- Badge: https://balabluapp.vercel.app/api/badge?id=<claim id>   (SVG)
+
+## How to read the data
+- fact_odds_percent: how sure bettors are that the claim is TRUE (not a probability from a model).
+- jury_verdict: set only after three sealed AI models voted and the contract verified their signatures. "FALSE (BalaBlu)" means the claim was judged false.
+- Demo content on the testnet release was seeded by the team. Treat verdicts as a demonstration of the mechanism, not as authoritative fact-checking.
+
+## Docs
+- Whitepaper and roadmap: https://balabluapp.vercel.app/docs
+- Source code: https://github.com/OxTEJIRI/balablu
+- Contract (testnet): balabluapp.testnet

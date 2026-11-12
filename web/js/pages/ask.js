@@ -57,7 +57,7 @@ export function Ask() {
       ${busy && html`<div class="bubble blu row" style="flex-direction:row"><${Blu} face="magnifier" size=${30} cls="bob"/><span class="muted">Blu is checking the odds…</span></div>`}
       <div ref=${end}></div>
     </div>
-    <div class="row" style="margin:18px 0 10px;gap:8px">${STARTERS.map((s) => html`<button class="chip white" style="cursor:pointer" onClick=${() => send(s)}>${s}</button>`)}</div>
+    <div class="row" style="margin:18px 0 10px;gap:8px"><a class="chip dark" href="/paste">Paste a link</a>${STARTERS.map((s) => html`<button class="chip white" style="cursor:pointer" onClick=${() => send(s)}>${s}</button>`)}</div>
     <form class="composer" onSubmit=${(e) => { e.preventDefault(); send(); }}>
       <label class="sr" for="ask">Ask Blu</label>
       <input id="ask" value=${input} onInput=${(e) => setInput(e.target.value)} placeholder="Ask Blu if something is true…" autocomplete="off"/>

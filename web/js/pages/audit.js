@@ -4,6 +4,8 @@ import { view, shortModel, slug, friendly } from '../data.js';
 import { verifyVote } from '../verify.js';
 import { DATA, EXPLORER, CONTRACT } from '../config.js';
 import * as wallet from '../wallet.js';
+import { ShareSheet } from '../share.js';
+import { getCards } from '../data.js';
 
 const WORD = { Fact: 'FACT', Balablu: 'BALABLU', Unsure: 'UNSURE' };
 const STATUS = {
@@ -22,12 +24,15 @@ export function Audit({ id }) {
   const [checks, setChecks] = useState({});
   const [tx, setTx] = useState({});
   const [now, setNow] = useState(Date.now());
+  const [card, setCard] = useState(null);
+  const [sharing, setSharing] = useState(false);
 
   const load = async () => {
     const audit = await view('get_audit', { audit_id: id });
     setA(audit || false);
     if (!audit) return;
     view('get_claim', { claim_id: audit.claim_id }).then(setClaim);
+    getCards().then((l) => setCard(l.find((c) => c.claim.id === audit.claim_id) || null)).catch(() => {});
     for (const r of [1, 2]) fetch(`${DATA}/audits/${id}/r${r}/submitted.json`).then((x) => (x.ok ? x.json() : null)).then((j) => j && setTx((t) => ({ ...t, [r]: j.tx }))).catch(() => {});
   };
   useEffect(() => { load(); }, [id]);
@@ -120,6 +125,7 @@ export function Audit({ id }) {
         ${['Each vote was signed inside a registered sealed chip.', 'The signed question is exactly the one the contract wrote: claim, rule, frozen evidence, temperature 0.', 'Each vote is tied to this audit and round, so it cannot be reused.', 'One vote per model, and every model on the list voted.'].map((t) => html`<div class="check"><span class="dot">✓</span>${t}</div>`)}
         <div class="row" style="margin-top:6px;gap:8px">
           <button class="btn small lime" onClick=${verifyAll}>Verify it yourself</button>
+          ${card && html`<button class="btn small" onClick=${() => setSharing(true)}>Share card</button>`}
           ${Object.entries(tx).map(([r, h]) => html`<a class="btn small" target="_blank" rel="noopener" href=${`${EXPLORER}/txns/${h}`}>Round ${r} on NEAR</a>`)}
         </div>
         <span class="muted" style="font-size:13px">“Verify it yourself” downloads the exact signed files and re-checks the hashes and enclave signatures in your browser.</span>
@@ -128,6 +134,7 @@ export function Audit({ id }) {
 
     ${a.status === 'AppealWindow' && html`<div class="card row"><${Blu} face="shrug" size=${44}/><span style="flex:1">Think the jury got it wrong? Post a 2 USDC bond to send it to the 5-model panel. You get it back if the panel changes the result.</span><button class="btn coral" onClick=${() => act('appeal')}>Appeal</button></div>`}
     ${(a.status === 'AppealWindow' || a.status === 'CouncilWindow') && left === 0 && html`<div class="card row"><span style="flex:1">The window has closed. Anyone can finalize to pay the winners.</span><button class="btn lime" onClick=${() => act('finalize')}>Finalize</button></div>`}
+    ${sharing && card && html`<${ShareSheet} card=${{ ...card, last_outcome: a.outcome || card.last_outcome }} onClose=${() => setSharing(false)}/>`}
     <div class="card stack" style="gap:8px">
       <b>Evidence root</b>
       <span class="mono" style="font-size:12px;word-break:break-all">${a.evidence_root}</span>

@@ -95,7 +95,12 @@ function WatchList({ ids }) {
   useEffect(() => {
     if (!cards.length) return;
     const next = Object.fromEntries(cards.map((c) => [c.claim.id, c.odds_bps]));
-    try { localStorage.setItem('balablu.seen', JSON.stringify(next)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem('balablu.seen', JSON.stringify(next));
+      const v = JSON.parse(localStorage.getItem('balablu.seenv') || '{}');
+      cards.forEach((c) => { if (c.last_audit != null) v[c.claim.id] = c.last_audit; });
+      localStorage.setItem('balablu.seenv', JSON.stringify(v));
+    } catch { /* ignore */ }
   }, [cards]);
   return cards.map((c) => {
     const before = seen[c.claim.id];

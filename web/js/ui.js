@@ -10,10 +10,11 @@ export const html = htm.bind(h);
 // ---------- router ----------
 const listeners = new Set();
 export function navigate(path) {
-  if (path === location.pathname + location.search) return;
+  if (path === location.pathname + location.search + location.hash) return;
   history.pushState({}, '', path);
   listeners.forEach((f) => f());
-  window.scrollTo(0, 0);
+  if (location.hash) setTimeout(() => document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'smooth' }), 80);
+  else window.scrollTo(0, 0);
 }
 export function useLocation() {
   const [, set] = useState(0);
@@ -159,7 +160,8 @@ export function BetPanel({ card, initialSide = 'Fact', onDone, compact = false }
         toast(`Called it ${side === 'Fact' ? 'FACT' : 'BALABLU'}! ${amount} pts in.`);
       } else {
         if (!acct) { await wallet.signIn(); return; }
-        await wallet.call('buy', { claim_id: c.id, side, currency: 'Usdc', amount: String(units) });
+        const min = quote ? String(Math.floor(Number(quote.shares) * 0.97)) : null;
+        await wallet.call('buy', { claim_id: c.id, side, currency: 'Usdc', amount: String(units), min_shares: min });
         toast(`Called it ${side === 'Fact' ? 'FACT' : 'BALABLU'} with $${amount}.`);
       }
       emit('bet', { claim: c.id });

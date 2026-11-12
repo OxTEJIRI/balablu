@@ -21,7 +21,7 @@ createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
     if (url.pathname.startsWith('/api/')) {
-      const name = url.pathname.slice(5).replace(/[^a-z0-9-]/g, '');
+      const name = url.pathname.slice(5).replace(/[^a-z0-9/-]/g, '').replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
       const mod = await import(pathToFileURL(join(root, 'api', `${name}.js`)).href);
       let raw = '';
       for await (const chunk of req) raw += chunk;
@@ -29,6 +29,7 @@ createServer(async (req, res) => {
       req.query = Object.fromEntries(url.searchParams);
       res.status = (c) => { res.statusCode = c; return res; };
       res.json = (o) => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(o)); };
+      res.send = (b) => res.end(b);
       return await mod.default(req, res);
     }
     if (url.pathname.startsWith('/data/')) {
