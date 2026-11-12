@@ -39,7 +39,9 @@ async function load() {
 
 /** Restore a session on page load (cheap if never connected). */
 export async function restore() {
-  if (current) {
+  // redirect-style wallets (MyNearWallet) come back with these in the URL: the selector must be loaded to finish the login or transaction
+  const returning = /[?&](account_id|all_keys|public_key|transactionHashes|errorCode|errorMessage)=/.test(location.search);
+  if (current || returning) {
     try { await load(); } catch (e) { console.warn('wallet restore failed', e); }
   }
 }
