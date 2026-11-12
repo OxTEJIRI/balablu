@@ -136,6 +136,8 @@ h1, h2, h3 { margin: 0; letter-spacing: -1px; }
 .dot { width: 24px; height: 24px; border-radius: 50%; background: var(--lime); border: 1.5px solid var(--ink); display: flex; align-items: center; justify-content: center; font: 700 12px var(--mono); flex: none; }
 .dot.wait { background: var(--card); }
 .dot.bad { background: var(--coral); }
+.trust-note { display: grid; gap: 3px; border: 1.5px solid var(--ink); border-radius: 14px; padding: 12px 14px; background: var(--aqua-2); font-size: 14px; line-height: 1.45; }
+.trust-note b { font-size: 14px; }
 
 /* play */
 .playcard { position: relative; min-height: 360px; }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'preact/hooks';
 import { html, Blu, Loading, Empty, Verdict, toast, pct, fmt } from '../ui.js';
 import { view, shortModel, slug, friendly } from '../data.js';
 import { verifyVote } from '../verify.js';
-import { DATA, EXPLORER, CONTRACT } from '../config.js';
+import { DATA, EXPLORER, CONTRACT, NETWORK } from '../config.js';
 import * as wallet from '../wallet.js';
 
 const WORD = { Fact: 'FACT', Balablu: 'BALABLU', Unsure: 'UNSURE' };
@@ -15,6 +15,14 @@ const STATUS = {
   Cancelled: 'Cancelled: the jury did not answer in time. Fees were refunded.',
 };
 
+function base64(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
 export function Audit({ id }) {
   const [a, setA] = useState(null);
   const [claim, setClaim] = useState(null);
@@ -22,6 +30,7 @@ export function Audit({ id }) {
   const [checks, setChecks] = useState({});
   const [tx, setTx] = useState({});
   const [now, setNow] = useState(Date.now());
+  const [exporting, setExporting] = useState(false);
 
   const load = async () => {
     const audit = await view('get_audit', { audit_id: id });
@@ -48,8 +57,9 @@ export function Audit({ id }) {
 
   const rounds = [1, 2].map((r) => a.votes.filter((v) => v.round === r)).filter((l) => l.length);
   const revealing = shown < a.votes.length;
-  const final = a.outcome && !revealing;
-  const face = !final ? 'magnifier' : a.outcome === 'Balablu' ? 'raspberry' : a.outcome === 'Fact' ? 'stars' : 'shrug';
+  const verdictReady = Boolean(a.outcome) && !revealing && ['AppealWindow', 'CouncilWindow', 'Final'].includes(a.status);
+  const final = a.status === 'Final' && verdictReady;
+  const face = !verdictReady ? 'magnifier' : a.outcome === 'Balablu' ? 'raspberry' : a.outcome === 'Fact' ? 'stars' : 'shrug';
   const left = Math.max(0, a.deadline_ms - now);
 
   async function verifyAll() {
@@ -58,6 +68,102 @@ export function Audit({ id }) {
       setChecks((c) => ({ ...c, [key]: 'checking' }));
       const r = await verifyVote(id, v.round, v);
       setChecks((c) => ({ ...c, [key]: r }));
+    }
+  }
+
+  async function downloadProofBundle() {
+    setExporting(true);
+    try {
+      const replies = [];
+      const browserChecks = [];
+      for (const v of a.votes) {
+        const key = `${v.round}-${v.model}`;
+        setChecks((c) => ({ ...c, [key]: 'checking' }));
+        const checked = await verifyVote(id, v.round, v);
+        setChecks((c) => ({ ...c, [key]: checked }));
+        if (!checked.artifacts) throw new Error(`Could not load signed files for ${v.model}`);
+        browserChecks.push({ round: v.round, model: v.model, passed: checked.ok, steps: checked.steps });
+        replies.push({
+          round: v.round,
+          model: v.model,
+          verdict: v.verdict,
+          reason: v.reason,
+          request_sha256: v.request_sha256,
+          response_sha256: v.response_sha256,
+          transaction: tx[v.round] ? {
+            hash: tx[v.round],
+            url: `${EXPLORER}/txns/${tx[v.round]}`,
+          } : null,
+          files: {
+            request_base64: base64(checked.artifacts.request),
+            response_base64: base64(checked.artifacts.response),
+            signature_json_base64: base64(checked.artifacts.signature),
+          },
+        });
+      }
+
+      const allPassed = browserChecks.every((check) => check.passed);
+      const bundle = {
+        format: 'balablu-proof-bundle',
+        version: 1,
+        created_at: new Date().toISOString(),
+        chain: { network: NETWORK, contract: CONTRACT, explorer_url: `${EXPLORER}/address/${CONTRACT}` },
+        audit: {
+          id: a.id,
+          kind: a.kind,
+          status: a.status,
+          outcome: a.outcome,
+          claim: { id: claim.id, page: claim.page, text: claim.text, rule: claim.rule },
+          evidence_root: a.evidence_root,
+          evidence_ids: a.evidence_ids,
+          votes: a.votes,
+        },
+        transactions: Object.entries(tx).map(([round, hash]) => ({
+          round: Number(round), hash, url: `${EXPLORER}/txns/${hash}`,
+        })),
+        replies,
+        browser_verification: {
+          all_passed: allPassed,
+          checks: browserChecks,
+          scope: 'Checks exact request and response hashes and Ed25519 signatures. It does not independently query NEAR to confirm that the bundled vote metadata is on-chain.',
+        },
+      };
+
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = href;
+      link.download = `balablu-audit-${a.id}-proof.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 1000);
+      toast(allPassed
+        ? 'Proof bundle downloaded. All browser checks passed.'
+        : 'Proof bundle downloaded. Review its verification results before relying on it.', !allPassed);
+    } catch (e) {
+      toast(`Could not build proof bundle: ${e.message}`, true);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function shareVerdict() {
+    const url = `${location.origin}/audit/${a.id}`;
+    const outcome = a.outcome === 'Unresolvable' ? 'UNRESOLVABLE' : WORD[a.outcome];
+    const qualifier = a.status === 'Final' ? 'Final' : 'Provisional';
+    const text = `${qualifier} BalaBlu verdict for audit #${a.id}: ${outcome}. “${claim.text}” Read the evidence and verify the signed replies against hashes recorded on NEAR.`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `BalaBlu audit #${a.id}`, text, url });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(`${text} ${url}`);
+        toast('Verdict link copied.');
+      } else {
+        prompt('Copy this verdict link', `${text} ${url}`);
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') toast('Could not share this verdict.', true);
     }
   }
   async function act(method) {
@@ -106,23 +212,34 @@ export function Audit({ id }) {
       </div>`)}
     </section>
 
-    ${final && html`<div class="row" style="gap:20px;align-items:stretch">
+    ${verdictReady && html`<div class="row" style="gap:20px;align-items:stretch">
       <section class=${'card pop row ' + (a.outcome === 'Balablu' ? 'coral' : 'lime')} style="flex:1 1 420px;flex-wrap:nowrap;gap:18px">
         <${Blu} face=${face} size=${92}/>
         <div>
-          <span class="kicker" style="color:var(--ink)">Verdict · ${a.votes.filter((v) => v.round === (rounds.length)).filter((v) => v.verdict === a.outcome).length} of ${rounds[rounds.length - 1].length}${a.council_overruled ? ' · council overruled' : ''}</span>
+          <span class="kicker" style="color:var(--ink)">${final ? 'Final verdict' : a.status === 'AppealWindow' ? 'First jury verdict · appeal open' : 'Panel verdict · council review'} · ${a.votes.filter((v) => v.round === rounds.length).filter((v) => v.verdict === a.outcome).length} of ${rounds[rounds.length - 1].length}${a.council_overruled ? ' · council overruled' : ''}</span>
           <div style="font-weight:800;font-size:44px;letter-spacing:-1.5px;line-height:1.05">${a.outcome === 'Balablu' ? 'BalaBlu’d!' : a.outcome === 'Fact' ? 'It’s a FACT!' : 'Jury split'}</div>
-          <span style="font-size:16px">${a.outcome === 'Unresolvable' ? 'Everyone gets refunded at the last odds.' : `${WORD[a.outcome]} callers get paid. A new round opens near the verdict.`}</span>
+          <span style="font-size:16px">${final
+            ? (a.outcome === 'Unresolvable' ? 'Everyone was refunded at the last odds.' : `${WORD[a.outcome]} callers were paid. A new round opened near the verdict.`)
+            : a.status === 'AppealWindow'
+              ? 'This verdict can still be appealed. Payouts wait until the appeal window closes.'
+              : 'The council can still change this panel verdict. Payouts wait until review closes.'}</span>
         </div>
       </section>
       <section class="card stack" style="flex:1 1 420px;gap:10px">
         <b style="font-size:19px">What the contract checked</b>
-        ${['Each vote was signed inside a registered sealed chip.', 'The signed question is exactly the one the contract wrote: claim, rule, frozen evidence, temperature 0.', 'Each vote is tied to this audit and round, so it cannot be reused.', 'One vote per model, and every model on the list voted.'].map((t) => html`<div class="check"><span class="dot">✓</span>${t}</div>`)}
+        ${['Each reply matches a signature from a registered NEAR AI key.', 'The signed question is exactly the one the contract wrote: claim, rule, frozen evidence and temperature 0.', 'Each vote is tied to this audit and round, so it cannot be reused.', 'One vote per model, and every model on the list voted.'].map((t) => html`<div class="check"><span class="dot">✓</span>${t}</div>`)}
+        <div class="trust-note" role="note">
+          <b>What the signature proves</b>
+          <span>It authenticates the exact request and answer. It does not prove the answer is true.</span>
+          <span class="muted">NEAR AI attestation is checked before a key is registered on NEAR; that attestation check happens off-chain.</span>
+        </div>
         <div class="row" style="margin-top:6px;gap:8px">
-          <button class="btn small lime" onClick=${verifyAll}>Verify it yourself</button>
+          <button class="btn small lime" onClick=${verifyAll}>Verify in browser</button>
+          <button class="btn small aqua" onClick=${downloadProofBundle} disabled=${exporting}>${exporting ? 'Packing proof…' : 'Download proof bundle'}</button>
+          <button class="btn small" onClick=${shareVerdict}>Share verdict</button>
           ${Object.entries(tx).map(([r, h]) => html`<a class="btn small" target="_blank" rel="noopener" href=${`${EXPLORER}/txns/${h}`}>Round ${r} on NEAR</a>`)}
         </div>
-        <span class="muted" style="font-size:13px">“Verify it yourself” downloads the exact signed files and re-checks the hashes and enclave signatures in your browser.</span>
+        <span class="muted" style="font-size:13px">The bundle contains the exact signed files and your browser’s check results. Use its NEAR transaction links to confirm the vote hashes on-chain.</span>
       </section>
     </div>`}
 

@@ -21,7 +21,7 @@ Built at **NEAR HACKATHON** (Nov 2026). Work in progress.
   - Testnet audit #1 (`node workers/demo-audit.mjs`): claim "NEAR mainnet launched in 2018." with a real source and a prompt-injection source. Jury 3-0 BALABLU ([tx](https://testnet.nearblocks.io/txns/AsouyZRSxCKWfZMjFTMn7ARXuVpsRkbhA8Q8yoWEhYWY)), appeal, panel 5-0 BALABLU ([tx](https://testnet.nearblocks.io/txns/8ZmkYVG332Za1k21RjKhxgQw8Uda5zfHh7TTmHD8Uun2)), finalized and paid ([tx](https://testnet.nearblocks.io/txns/CrD48vs5EGK9mQ1NkYKVNDMH85cpDDKwC5ACBhW27noQ)). Signed replies are in `data/audits-first-deploy/`, attestation reports in `data/attestations/`. The same votes replay in the contract's unit tests.
   - Page writer anchored "NEAR Protocol" v1 ([tx](https://testnet.nearblocks.io/txns/Cw2omEnbn3hoUswQ3uFqe8YeYAtV8geR68v9UhUxonxj)).
 - [x] Ask Blu backend (`node workers/askblu.mjs "question"`): answers from claims + odds + jury verdicts; unknown questions become a suggested new claim.
-- [x] Web app (`web/`): home, encyclopedia pages (claims highlighted by odds, tap to call), claim pages (rule, evidence, audits, bets, duel, share, watch), live jury show with **in-browser signature verification**, Daily Bla, Ask Blu, Me (calls, truth score, badges, watchlist), money (wallet, test USDC, cash out, any-coin quotes via NEAR Intents)
+- [x] Web app (`web/`): home, encyclopedia pages (claims highlighted by odds, tap to call), claim pages (rule, evidence, audits, bets, duel, share, watch), live jury show with **in-browser signature verification and downloadable proof bundles**, Daily Bla, Ask Blu, Me (calls, truth score, badges, watchlist), money (wallet, test USDC, cash out, any-coin quotes via NEAR Intents)
   - No wallet needed to start: guests get practice points; a relayer with a restricted function-call key signs their practice bets (the contract only lets it touch `*.guest` practice balances)
   - Real money: NEAR Wallet Selector (Meteor, MyNearWallet), USDC bets capped at $2
 - [ ] NEAR Intents deposits on mainnet
@@ -40,6 +40,15 @@ Built and tested by GitHub Actions (`.github/workflows/contract.yml`). Locally:
 ```bash
 cd contract && cargo test
 ```
+
+## Verify a downloaded audit bundle
+Download the JSON bundle from an audit verdict page, then check its signed request/response bytes without an API key or npm dependencies:
+
+```bash
+node workers/verify-bundle.mjs balablu-audit-1-proof.json
+```
+
+This checks the claim binding, verdict, bundled hashes and Ed25519 signatures. It does not query NEAR to confirm vote inclusion or key registration; when a transaction link is included, use it to compare the bundle with the on-chain audit.
 
 ## AI and libraries used
 Code written with help from Claude (Anthropic). Libraries: near-sdk, hex (contract); Preact + htm (vendored, web); NEAR Wallet Selector (loaded from esm.sh when connecting a wallet). Fonts: Bricolage Grotesque, Source Serif 4, JetBrains Mono (Google Fonts).
