@@ -41,17 +41,35 @@ const pfp = base(800, 800, C.dark, `
 .ring{position:absolute;left:30px;top:30px;width:740px;height:740px;border-radius:50%;border:30px solid ${C.lime};background:${C.paper};display:grid;place-items:center}
 .ring svg{margin-top:24px}`, `<div class="ring">${blu(530)}</div>`);
 
-// ---------- 2. cover (1500x500): mascot + "Hello BalaBlu Fam" ----------
+// ---------- 2. cover (1500x500): small logo badge, big message, two real claim cards ----------
 const cover = base(1500, 500, C.dark, `
-.row{position:absolute;left:0;right:0;top:108px;display:flex;justify-content:center;align-items:center;gap:44px}
-.badge{width:228px;height:228px;border-radius:50%;border:12px solid ${C.lime};background:${C.paper};display:grid;place-items:center;flex:none}
-.badge svg{margin-top:14px}
-h1{font-weight:800;font-size:112px;letter-spacing:-4px;line-height:1}
-h1 b{color:${C.lime}}
-.sub{position:absolute;left:0;right:0;top:334px;text-align:center;font:500 28px 'JetBrains Mono',monospace;color:${C.mute};letter-spacing:.5px}
-.sub i{font-style:normal;color:${C.coral}}`,
-`<div class="row"><div class="badge">${blu(150)}</div><h1>Hello <b>BalaBlu</b> Fam</h1></div>
- <div class="sub">every fact has odds · don't get <i>BalaBlu'd</i></div>`);
+.dots{position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.075) 2px,transparent 2.5px);background-size:30px 30px}
+.glow1{position:absolute;left:380px;top:-250px;width:760px;height:760px;border-radius:50%;background:radial-gradient(closest-side,rgba(206,255,82,.20),rgba(206,255,82,0))}
+.glow2{position:absolute;right:-160px;bottom:-330px;width:640px;height:640px;border-radius:50%;background:radial-gradient(closest-side,rgba(255,122,102,.22),rgba(255,122,102,0))}
+.brand{position:absolute;left:0;right:0;top:50px;display:flex;justify-content:center;align-items:center;gap:16px}
+.mini{width:84px;height:84px;border-radius:50%;border:6px solid ${C.lime};background:${C.paper};display:grid;place-items:center;flex:none}
+.mini svg{margin-top:6px}
+.word{font-weight:800;font-size:54px;letter-spacing:-2px}
+h1{position:absolute;left:0;right:0;top:160px;text-align:center;font-weight:800;font-size:96px;line-height:1;letter-spacing:-4px}
+h1 b{color:${C.ink};background:${C.lime};padding:0 20px 4px;border-radius:22px;margin-left:6px}
+.sub{position:absolute;left:0;right:0;top:300px;text-align:center;font:500 27px 'JetBrains Mono',monospace;color:${C.mute};letter-spacing:.5px}
+.sub i{font-style:normal;color:${C.coral}}.sub u{text-decoration:none;color:${C.lime}}
+.card{position:absolute;width:282px;background:#fff;color:${C.ink};border:5px solid ${C.ink};border-radius:24px;padding:18px 20px;box-shadow:0 10px 0 rgba(0,0,0,.4)}
+.card .k{font:700 15px 'JetBrains Mono',monospace;letter-spacing:1px;color:#3E5566}
+.card p{font:600 22px/1.25 'Source Serif 4',serif;margin:6px 0 12px}
+.bar{height:14px;border-radius:7px;border:3px solid ${C.ink};background:${C.coral};overflow:hidden}.bar i{display:block;height:100%;background:${C.lime}}
+.meta{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font:700 16px 'JetBrains Mono',monospace}
+.stamp{font:800 17px 'Bricolage Grotesque',sans-serif;padding:4px 10px;border-radius:9px;border:3px solid ${C.ink}}
+.c1{left:14px;top:46px;transform:rotate(-5deg)}
+.c1 .stamp{background:${C.coral}}
+.c2{right:14px;top:246px;transform:rotate(5deg)}
+.c2 .stamp{background:${C.lime}}`,
+`<div class="dots"></div><div class="glow1"></div><div class="glow2"></div>
+ <div class="brand"><div class="mini">${blu(58)}</div><div class="word">BalaBlu</div></div>
+ <h1>Every fact has <b>odds.</b></h1>
+ <div class="sub"><u>FACT</u> or <i>BALABLU</i>? A sealed AI jury decides.</div>
+ <div class="card c1"><div class="k">THE GREAT WALL</div><p>The Great Wall is visible from the Moon.</p><div class="bar"><i style="width:10%"></i></div><div class="meta"><span>10% FACT</span><span class="stamp">BALABLU'D</span></div></div>
+ <div class="card c2"><div class="k">OCTOPUS</div><p>An octopus has three hearts.</p><div class="bar"><i style="width:90%"></i></div><div class="meta"><span>90% FACT</span><span class="stamp">CHECKED ✓</span></div></div>`);
 
 // ---------- 3. welcome post image (1600x900) ----------
 const welcome = base(1600, 900, C.ink, `
