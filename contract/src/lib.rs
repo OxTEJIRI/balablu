@@ -312,6 +312,21 @@ pub struct PositionView {
 
 #[near(serializers = [json])]
 #[derive(Debug, Clone)]
+pub struct MyPosition {
+    pub claim_id: u64,
+    pub epoch: u32,
+    pub currency: Currency,
+    pub fact: U128,
+    pub balablu: U128,
+    pub spent: U128,
+    /// The round was settled: `redeem` pays out now.
+    pub resolved: bool,
+    /// Once settled: what one FACT share pays out of 10,000 (BALABLU pays the rest).
+    pub payout_fact_bps: u32,
+}
+
+#[near(serializers = [json])]
+#[derive(Debug, Clone)]
 pub struct WalletView {
     pub points: U128,
     pub usdc: U128,
@@ -950,6 +965,38 @@ impl BalaBlu {
     pub fn get_wallet(&self, account_id: AccountId) -> WalletView {
         let w = self.wallets.get(&account_id).cloned().unwrap_or_default();
         WalletView { points: U128(w.points), usdc: U128(w.usdc), got_points: w.got_points }
+    }
+
+    /// Every bet an account still holds (open or settled-but-not-collected), in one call.
+    /// Powers the "My bets" page.
+    pub fn get_positions(&self, account_id: AccountId) -> Vec<MyPosition> {
+        let mut out = Vec::new();
+        for c in self.claims.iter() {
+            for epoch in 0..=c.epoch {
+                for cur in [Currency::Points, Currency::Usdc] {
+                    if let Some(p) = self.positions.get(&(account_id.clone(), c.id, epoch, cur.tag())) {
+                        if p.fact == 0 && p.balablu == 0 {
+                            continue;
+                        }
+                        let (resolved, bps) = match self.markets.get(&(c.id, epoch, cur.tag())) {
+                            Some(m) => (m.status == MarketStatus::Resolved, m.payout_fact_bps),
+                            None => (false, 0),
+                        };
+                        out.push(MyPosition {
+                            claim_id: c.id,
+                            epoch,
+                            currency: cur,
+                            fact: U128(p.fact),
+                            balablu: U128(p.balablu),
+                            spent: U128(p.spent),
+                            resolved,
+                            payout_fact_bps: bps,
+                        });
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// "Bet $2, win $2.38 if you're right."

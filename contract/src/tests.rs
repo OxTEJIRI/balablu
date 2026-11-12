@@ -865,3 +865,32 @@ fn no_evidence_means_the_treasury_keeps_the_whole_fee() {
     c.finalize(audit);
     assert_eq!(usdc_of(&c, owner()), ONE / 2);
 }
+
+// ---------------- my bets (one-call position list) ----------------
+
+#[test]
+fn get_positions_lists_open_and_settled_bets() {
+    let mut c = setup(0);
+    let a = new_claim(&mut c, 5_000, 0);
+    let b = new_claim(&mut c, 5_000, 0);
+    call_as(ada(), 0);
+    c.claim_practice_points();
+    c.buy(a, Side::Fact, Currency::Points, U128(100 * ONE), None);
+    c.buy(b, Side::Balablu, Currency::Points, U128(50 * ONE), None);
+    assert!(c.get_positions(kemi()).is_empty(), "nothing for an account that never bet");
+    let open = c.get_positions(ada());
+    assert_eq!(open.len(), 2);
+    assert!(open.iter().all(|p| !p.resolved));
+    // settle claim a: the old round becomes a settled position, claim b stays open
+    c.settle(a, Outcome::Fact);
+    let after = c.get_positions(ada());
+    let settled = after.iter().find(|p| p.claim_id == a && p.epoch == 0).unwrap();
+    assert!(settled.resolved);
+    assert_eq!(settled.payout_fact_bps, 10_000);
+    assert!(settled.fact.0 > 0);
+    assert!(!after.iter().find(|p| p.claim_id == b).unwrap().resolved);
+    // collecting removes it from the list
+    call_as(ada(), 0);
+    c.redeem(a, 0, Currency::Points);
+    assert_eq!(c.get_positions(ada()).len(), 1);
+}
