@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { view, call, explorer, CONTRACT } from './lib/near.mjs';
-import { chatExact, fetchSignature } from './lib/nearai.mjs';
+import { chatExact, fetchSignature, attestation } from './lib/nearai.mjs';
 
 const ADMIN = 'admin.balabluapp.testnet'; // owner, keeper, council
 const PLAYER = 'player1.balabluapp.testnet';
@@ -51,6 +51,14 @@ if (!existsSync(`${process.env.USERPROFILE || process.env.HOME}/.near-credential
 }
 const cfg0 = await view('get_config');
 must('short windows', call('set_config', { config: { ...cfg0, appeal_window_ms: 150_000, keeper: ADMIN, council: ADMIN, relayer: RELAYER } }, ADMIN, { gas: '30 Tgas' }));
+
+// a fresh contract trusts no juror: register each model's enclave key, taken from its attestation report
+for (const model of cfg0.jury_models) {
+  const rep = await attestation(model);
+  const key = rep.model_attestations?.[0]?.signing_public_key;
+  if (!key) { console.error(`no attested key for ${model}`); process.exit(2); }
+  if (!(await view('jury_key_model', { public_key_hex: key }))) must(`register ${model}`, call('register_jury_key', { model, public_key_hex: key }, ADMIN, { gas: '30 Tgas' }));
+}
 
 // ---- Part 1: real-money round trip (what a wallet user does) ----
 console.log('\n== Part 1: real-money round trip');
