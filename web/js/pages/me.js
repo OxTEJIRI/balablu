@@ -57,12 +57,12 @@ export function Me() {
   return html`<div class="wrap stack" style="padding-top:28px;gap:22px">
     <div class="row"><${Blu} face=${wins.length ? 'stars' : 'squint'} size=${60}/><div><h1 class="h2">My BalaBlu</h1><span class="muted mono" style="font-size:13px">guest ${guestId().slice(0, 9)}… on this device${wallet.account() ? ` · wallet ${wallet.account()}` : ''}</span></div></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
-      <div class="card"><div class="mono" style="font-size:26px;font-weight:700">${fmt(w.points, 0)}</div><span class="muted">practice points</span></div>
+      <div class="card"><div class="mono" style="font-size:26px;font-weight:700">${fmt(w.got_points ? w.points : 1000e6, 0)}</div><span class="muted">practice points${w.got_points ? '' : ' (waiting for you)'}</span></div>
       <div class="card"><div class="mono" style="font-size:26px;font-weight:700">${calls.length}</div><span class="muted">calls</span></div>
       <div class="card"><div class="mono" style="font-size:26px;font-weight:700">${hit == null ? '—' : hit + '%'}</div><span class="muted">truth score</span></div>
       <div class="card"><div class="mono" style="font-size:26px;font-weight:700">${streak}</div><span class="muted">day streak</span></div>
     </div>
-    ${!w.got_points && html`<div class="card lime row"><span style="flex:1">You haven’t claimed your 1,000 free practice points yet.</span><button class="btn dark" onClick=${async () => { await ensurePoints(); load(); }}>Claim them</button></div>`}
+    ${!w.got_points && html`<div class="card lime row"><span style="flex:1">Your 1,000 free practice points are waiting. They’re added the moment you make your first call, or you can add them now.</span><button class="btn dark" onClick=${async () => { await ensurePoints(); load(); }}>Add them now</button></div>`}
     ${badges.length > 0 && html`<div class="row">${badges.map(([b, why]) => html`<span class="chip" title=${why}>${b}</span>`)}</div>`}
     <section class="card stack">
       <b style="font-size:19px">My calls</b>

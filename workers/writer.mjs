@@ -58,6 +58,12 @@ writeFileSync(join(dir, `v${version}.request.json`), res.requestBytes);
 writeFileSync(join(dir, `v${version}.response.json`), res.responseBytes);
 writeFileSync(join(dir, `v${version}.signature.json`), JSON.stringify(sig, null, 2));
 console.log(`# ${page} (v${version})\n\n${md}\n`);
+try {
+  const { eli5For } = await import('./eli5.mjs');
+  writeFileSync(join(dir, `v${version}.eli5.md`), `${await eli5For(`# ${page}\n\n${md}\n`)}\n`);
+} catch (e) {
+  console.log(`(no ELI5 version: ${e.message})`);
+}
 
 if (dry) process.exit(0);
 const reply = { request: res.requestBytes.toString('base64'), response: res.responseBytes.toString('base64'), public_key_hex: sig.signing_address, signature_hex: sig.signature };

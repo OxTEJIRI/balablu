@@ -53,6 +53,9 @@ export function Wiki({ slug }) {
     setEli5(true);
     if (simple) return;
     try {
+      // pre-written version first (instant); the live AI call is the fallback
+      const ready = anchor && await fetch(`${DATA}/pages/${slug}/v${anchor.version}.eli5.md`).then((r) => (r.ok ? r.text() : null)).catch(() => null);
+      if (ready) return setSimple(ready);
       const r = await postJSON('/api/eli5', { text: md });
       setSimple(r.text);
     } catch (e) {

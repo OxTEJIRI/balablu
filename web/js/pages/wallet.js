@@ -46,22 +46,35 @@ export function Wallet() {
   </div>`;
 }
 
+/** About $5 worth of a coin, rounded to 2 significant digits ("0.067" BTC-ish, "5" USDC). */
+const startAmount = (t) => String(Number((5 / (t.price || 1)).toPrecision(2)));
+
 function AnyCoin({ acct }) {
   const [tokens, setTokens] = useState([]);
   const [from, setFrom] = useState(null);
-  const [amount, setAmount] = useState('0.05');
+  const [amount, setAmount] = useState('');
   const [quote, setQuote] = useState(null);
   const [err, setErr] = useState(null);
+  const pick = (t) => { setFrom(t.assetId); setAmount(startAmount(t)); };
   useEffect(() => {
     fetch('/api/quote').then((r) => r.json()).then((j) => {
       const want = [['SOL', 'sol'], ['ETH', 'eth'], ['BTC', 'btc'], ['USDC', 'base'], ['USDC', 'sol']];
       const list = want.map(([s, ch]) => j.tokens.find((t) => t.symbol === s && t.chain === ch) || j.tokens.find((t) => t.symbol === s)).filter(Boolean);
       setTokens(list);
-      setFrom(list[0]?.assetId);
+      if (list[0]) pick(list[0]);
     }).catch(() => setErr('Could not reach NEAR Intents right now.'));
   }, []);
+  /** "try at least 150000" is in the coin's smallest unit: say it in plain money. */
+  const nice = (msg, t) => {
+    const m = /at least (\d+)/i.exec(msg || '');
+    if (m && t) {
+      const v = Number(m[1]) / 10 ** t.decimals;
+      return `That’s too small to swap. Try at least ${Number(v.toPrecision(2))} ${t.symbol} (about $${(v * t.price).toFixed(2)}).`;
+    }
+    return msg;
+  };
   useEffect(() => {
-    if (!from) return;
+    if (!from || !amount) return;
     setQuote(null);
     setErr(null);
     const t = setTimeout(() => {
@@ -77,7 +90,7 @@ function AnyCoin({ acct }) {
     <span class="muted">Send from the wallet you already use (Solana, Ethereum, Bitcoin, Base…). NEAR Intents swaps it to USDC on NEAR, usually in under a minute (Bitcoin takes longer). No bridge, no gas coin needed.</span>
     <span class="kicker">1 · Pick your coin</span>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
-      ${tokens.map((t) => html`<button class="btn" style=${from === t.assetId ? 'background:var(--lime-2);border-width:3px' : ''} aria-pressed=${from === t.assetId} onClick=${() => setFrom(t.assetId)}>${t.symbol}<span class="muted" style="font-size:12px">${t.chain}</span></button>`)}
+      ${tokens.map((t) => html`<button class="btn" style=${from === t.assetId ? 'background:var(--lime-2);border-width:3px' : ''} aria-pressed=${from === t.assetId} onClick=${() => pick(t)}>${t.symbol}<span class="muted" style="font-size:12px">${t.chain}</span></button>`)}
     </div>
     <span class="kicker">2 · How much</span>
     <label class="row" style="border:2px solid var(--ink);border-radius:14px;padding:0 14px;height:52px;flex-wrap:nowrap">
@@ -86,10 +99,10 @@ function AnyCoin({ acct }) {
       <b>${tok?.symbol || ''}</b>
     </label>
     <div class="payout">
-      ${err ? html`<span>${err}</span>` : !quote ? html`<span class="muted">Getting a live quote from NEAR Intents…</span>` : html`
+      ${err ? html`<span>${nice(err, tok)}</span>` : !quote ? html`<span class="muted">Getting a live quote from NEAR Intents…</span>` : html`
         You send <b class="mono">${quote.amountInFormatted} ${tok?.symbol}</b> (≈ $${Number(quote.amountInUsd).toFixed(2)})<br/>
         You get <b class="mono hl">${Number(quote.amountOutFormatted).toFixed(2)} USDC</b> in about ${quote.timeEstimate > 90 ? `${Math.round(quote.timeEstimate / 60)} min` : `${quote.timeEstimate} s`}`}
     </div>
-    <span class="muted" style="font-size:13px">${NETWORK === 'testnet' ? 'Live mainnet quote. NEAR Intents has no testnet, so real deposits open on the mainnet app.' : 'Your deposit address appears after you confirm.'}</span>
+    <span class="muted" style="font-size:13px">${NETWORK === 'testnet' ? 'This is the testnet demo, so the bets use play money. The prices above are real, live quotes from NEAR Intents (it only exists on mainnet), so you can see exactly what paying with any coin will cost. Real deposits switch on in the mainnet version.' : 'Your deposit address appears after you confirm.'}</span>
   </div>`;
 }
