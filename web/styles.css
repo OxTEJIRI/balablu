@@ -208,7 +208,7 @@ ol.next { margin: 0; padding-left: 22px; display: flex; flex-direction: column; 
 .bet:first-of-type { border-top: 0; padding-top: 0; }
 
 /* keep the footer below the fold while pages load */
-main#main { min-height: 85vh; }
+main#main { min-height: calc(100vh - 96px); }
 .skip { position: absolute; left: -9999px; top: 8px; z-index: 100; background: var(--ink); color: #fff; padding: 10px 14px; border-radius: 10px; }
 .skip:focus { left: 12px; }
 
