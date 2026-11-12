@@ -1,7 +1,0 @@
-{
-  "text": "z-ai/glm-5.3-flash:ed0e71622c47acc5f40a4848b973ff02936b6ad2209a723d52477b3b012811cc:9781d2ab0991c770414c362fd3fbcfc247bb5cdf4ea9c79792956d11aeae3f06",
-  "signature": "ede1890140324893f70cc507746d70efd9d5d675f1885513bf97e7c3db77cbe8dc0fcddeafeeef68a638bd9f0664e0fd6f4b3384ee19769a0631396d6fd8ee04",
-  "signing_address": "5a0210f2442c79355784f9de021985429561da5bacc3a4424b01ac52b7e0caff",
-  "signing_algo": "ed25519",
-  "signature_kind": "provider_tee"
-}
